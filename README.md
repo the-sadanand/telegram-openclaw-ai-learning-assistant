@@ -55,48 +55,48 @@ Every night at 9 PM (user's timezone):
 ```
 ┌─────────────────────────────────────────────────────────────────────┐
 │                          User's Device                              │
-│                     ┌──────────────────┐                           │
-│                     │   User on Telegram│                           │
-│                     └────────┬─────────┘                           │
+│                     ┌──────────────────┐                            │
+│                     │  User on Telegram│                           │
+│                     └────────┬─────────┘                            │
 └──────────────────────────────┼──────────────────────────────────────┘
                                │ 1. Sends message / receives brief
                     ┌──────────▼──────────┐
-                    │     Telegram API     │
+                    │     Telegram API    │
                     └──────────┬──────────┘
                                │
         ┌──────────────────────▼──────────────────────────────────┐
         │              OpenClaw Gateway (Your Machine)            │
         │                                                         │
-        │  ┌─────────────────┐       ┌──────────────────────────┐│
-        │  │  Cron Scheduler  │       │  Telegram Channel Plugin ││
-        │  │ (9 PM nightly)  │       │  (persistent connection) ││
-        │  └────────┬────────┘       └────────────┬─────────────┘│
+        │  ┌─────────────────┐       ┌──────────────────────────┐ │
+        │  │  Cron Scheduler  │       │  Telegram Channel Plugin│ │
+        │  │ (9 PM nightly)  │       │  (persistent connection) │ │
+        │  └────────┬────────┘       └────────────┬─────────────┘ │
         │           │                             │               │
         │           └─────────────┬───────────────┘               │
         │                         │                               │
-        │                ┌────────▼────────┐                      │
-        │                │   Agent Core    │                      │
-        │                │    (Molty)      │                      │
-        │                └─┬───────────┬──┘                      │
+        │                ┌───────▼────────┐                      │
+        │                │   Agent Core   │                      │
+        │                │    (Molty)     │                      │
+        │                └─┬───────────┬──┘                       │
         │                  │           │                          │
-        │         ┌────────▼───┐  ┌────▼──────────┐             │
-        │         │Tool Executor│  │ Skill Registry │             │
-        │         └────┬────┬──┘  └───┬─────────┬─┘             │
+        │         ┌────────▼───┐  ┌────▼──────────┐               │
+        │         │Tool Executo│  │ Skill Registr│             │
+        │         └────┬────┬──┘  └───┬─────────┬─┘               │
         │              │    │         │         │                 │
-        │        ┌─────▼─┐ ┌▼──────┐ ┌▼──────┐ ┌▼─────────────┐│
-        │        │web_    │ │memory │ │user-  │ │daily-quiz/   ││
-        │        │search  │ │_store │ │onboard│ │SKILL.md      ││
-        │        └───┬────┘ └──┬───┘ │SKILL  │ └──────────────┘│
-        │            │         │     │.md    │                  │
-        │      ┌─────▼──┐  ┌───▼───┐ └───────┘                 │
-        │      │DuckDDGo│  │/data/ │                            │
-        │      │/SearXNG│  │memory │                            │
-        │      └────────┘  └───────┘                            │
+        │        ┌─────▼─┐ ┌▼──────┐ ┌▼──────┐ ┌▼─────────────┐   │
+        │        │web_   │ │memory│  │user-   │ │daily-quiz/  │   │
+        │        │search │ │_store│ │onboard │ │SKILL.md     │   │
+        │        └───┬────┘ └──┬───┘ │SKILL  │ └──────────────┘   │
+        │            │         │     │.md    │                    │
+        │      ┌─────▼──┐  ┌───▼───┐ └───────┘                    │
+        │      │DuckDDGo│  │/data/ │                              │
+        │      │/SearXNG│  │memory │                              │
+        │      └────────┘  └───────┘                              │
         └─────────────────────────────────────────────────────────┘
                                │
                     ┌──────────▼──────────┐
-                    │ LLM Provider         │
-                    │ (Ollama / Cloud)     │
+                    │ LLM Provider        │
+                    │ (Ollama / Cloud)    │
                     └─────────────────────┘
 ```
 
@@ -120,7 +120,7 @@ If you prefer a **cloud LLM** (OpenAI / Anthropic), you only need Docker and an 
 ### Step 1 — Clone the Repository
 
 ```bash
-git clone https://github.com/your-username/openclaw-learning-assistant.git
+git clone https://github.com/the-sadanand/telegram-openclaw-ai-learning-assistant.git
 cd openclaw-learning-assistant
 ```
 
