@@ -1,0 +1,78 @@
+# SearXNG Configuration for OpenClaw Learning Assistant
+# This file configures the optional self-hosted SearXNG search backend.
+# To activate: uncomment the searxng service in docker-compose.yml
+# and set SEARXNG_URL=http://searxng:8080 in your .env file.
+
+use_default_settings: true
+
+general:
+  debug: false
+  instance_name: "OpenClaw Search"
+  privacypolicy_url: false
+  donation_url: false
+  contact_url: false
+  enable_metrics: false
+
+search:
+  safe_search: 0
+  autocomplete: ""
+  default_lang: "en"
+  ban_time_on_fail: 5
+  max_ban_time_on_fail: 120
+  formats:
+    - html
+    - json
+
+server:
+  port: 8080
+  bind_address: "0.0.0.0"
+  secret_key: "openclaw-searxng-secret-change-me"
+  limiter: false
+  image_proxy: false
+  http_protocol_version: "1.0"
+
+ui:
+  static_use_hash: true
+  default_locale: "en"
+  query_in_title: false
+  infinite_scroll: false
+  center_alignment: false
+  cache_url: https://web.archive.org/web/
+  default_theme: simple
+  simple_style: auto
+
+# Enabled search engines — web-focused for technical content
+engines:
+  - name: google
+    engine: google
+    shortcut: g
+    use_mobile_ui: false
+
+  - name: duckduckgo
+    engine: duckduckgo
+    shortcut: ddg
+
+  - name: bing
+    engine: bing
+    shortcut: bi
+
+  - name: stackoverflow
+    engine: stackoverflow
+    shortcut: so
+
+  - name: github
+    engine: github
+    shortcut: gh
+
+  - name: reddit
+    engine: reddit
+    shortcut: re
+    page_size: 10
+
+outgoing:
+  request_timeout: 6.0
+  max_request_timeout: 15.0
+  useragent_suffix: ""
+  pool_connections: 100
+  pool_maxsize: 20
+  enable_http2: true
