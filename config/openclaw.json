@@ -1,0 +1,89 @@
+{
+  "version": "1.0",
+
+  "model": {
+    "provider": "ollama",
+    "model": "llama3:8b",
+    "options": {
+      "temperature": 0.7,
+      "num_ctx": 8192
+    }
+  },
+
+  "agent": {
+    "name": "Molty",
+    "description": "A personalized AI learning assistant that sends daily tech briefs and interview questions via Telegram.",
+    "memory": {
+      "enabled": true,
+      "backend": "file",
+      "path": "/data/memory"
+    }
+  },
+
+  "plugins": {
+    "entries": {
+      "telegram": {
+        "enabled": true,
+        "package": "@openclaw/plugin-telegram",
+        "config": {
+          "botToken": "${env.TELEGRAM_BOT_TOKEN}"
+        }
+      }
+    }
+  },
+
+  "tools": {
+    "web_search": {
+      "enabled": true,
+      "provider": "duckduckgo"
+    },
+    "web_fetch": {
+      "enabled": true,
+      "maxContentLength": 50000
+    },
+    "memory_store": {
+      "enabled": true
+    }
+  },
+
+  "skills": {
+    "directory": "/app/skills",
+    "entries": [
+      "user-onboarding",
+      "daily-quiz"
+    ]
+  },
+
+  "standing_orders": [
+    {
+      "name": "trigger-user-onboarding",
+      "condition": "memory.user_profile_{{user.id}} does not exist",
+      "run_skill": "user-onboarding",
+      "description": "Automatically trigger onboarding for any new user who has no saved profile."
+    }
+  ],
+
+  "scheduling": {
+    "defaultDailyBriefTime": "21:00"
+  },
+
+  "cron": {
+    "jobs": [
+      {
+        "name": "nightly-tech-brief",
+        "schedule": "0 21 * * *",
+        "timezone": "{{user.timezone}}",
+        "session": "isolated",
+        "channel": "telegram",
+        "announce": true,
+        "message": "Run the daily-quiz skill for the primary user. Use their stored preferences (key: user_profile_{{user.id}}) to generate and send the daily tech brief to them on Telegram. Do not ask the user any questions — this is a fully automated job.",
+        "description": "Sends the personalised daily tech brief at 9 PM in the user's local timezone."
+      }
+    ]
+  },
+
+  "logging": {
+    "level": "info",
+    "file": "/data/logs/openclaw.log"
+  }
+}
