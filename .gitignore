@@ -1,0 +1,19 @@
+# Environment secrets — NEVER commit
+.env
+
+# Node
+node_modules/
+npm-debug.log*
+
+# OpenClaw runtime data
+data/
+*.log
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Editor
+.vscode/
+.idea/
+*.swp
