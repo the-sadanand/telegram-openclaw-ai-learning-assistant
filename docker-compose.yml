@@ -1,0 +1,141 @@
+# ─────────────────────────────────────────────────────────────────
+# OpenClaw Personalised Learning Assistant — Docker Compose
+# ─────────────────────────────────────────────────────────────────
+# Services:
+#   openclaw  — the AI agent gateway (Telegram bot + cron + skills)
+#   ollama    — local LLM inference server (Llama 3 8B)
+#   searxng   — optional self-hosted privacy-respecting web search
+# ─────────────────────────────────────────────────────────────────
+
+services:
+
+  # ── OpenClaw Agent Gateway ─────────────────────────────────────
+  openclaw:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: openclaw-agent
+    restart: unless-stopped
+    env_file:
+      - .env
+    environment:
+      # Override Ollama host to use the service name in this compose network
+      - OLLAMA_HOST=http://ollama:11434
+      # Paths inside the container
+      - OPENCLAW_CONFIG_PATH=/app/config/openclaw.json
+      - OPENCLAW_MEMORY_PATH=/data/memory
+      - OPENCLAW_SKILLS_PATH=/app/skills
+      - OPENCLAW_LOG_PATH=/data/logs
+      - PORT=3000
+      - NODE_ENV=production
+      - TZ=Asia/Kolkata
+    ports:
+      - "3000:3000"
+    volumes:
+      # Persist agent memory and logs across container restarts
+      - openclaw_memory:/data/memory
+      - openclaw_logs:/data/logs
+      # Mount skills and config as read-only so you can update them without rebuilding
+      - ./skills:/app/skills:ro
+      - ./config:/app/config:ro
+    depends_on:
+      ollama:
+        condition: service_started
+    networks:
+      - openclaw_net
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+
+  # ── Ollama — Local LLM Inference ───────────────────────────────
+  ollama:
+    image: ollama/ollama:latest
+    container_name: ollama
+    restart: unless-stopped
+    volumes:
+      - ollama_models:/root/.ollama
+    # Uncomment the following lines if you have an NVIDIA GPU available:
+    # deploy:
+    #   resources:
+    #     reservations:
+    #       devices:
+    #         - driver: nvidia
+    #           count: 1
+    #           capabilities: [gpu]
+    networks:
+      - openclaw_net
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:11434/api/version"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 15s
+
+  # ── Model Initialiser — pulls the LLM on first startup ─────────
+  ollama-init:
+    image: ollama/ollama:latest
+    container_name: ollama-init
+    restart: "no"
+    entrypoint: /bin/sh
+    command:
+      - -c
+      - |
+        echo "Waiting for Ollama to be ready..."
+        MAX_ATTEMPTS=30
+        ATTEMPT=0
+        while ! ollama list > /dev/null 2>&1 && [ $ATTEMPT -lt $MAX_ATTEMPTS ]; do
+          sleep 2
+          ATTEMPT=$((ATTEMPT + 1))
+        done
+        if [ $ATTEMPT -lt $MAX_ATTEMPTS ]; then
+          echo "Pulling llama3:8b model..."
+          ollama pull llama3:8b
+          echo "Model ready."
+        else
+          echo "ERROR: Ollama did not become ready in time"
+          exit 1
+        fi
+    environment:
+      - OLLAMA_HOST=http://ollama:11434
+    depends_on:
+      ollama:
+        condition: service_started
+    networks:
+      - openclaw_net
+
+  # ── SearXNG — Optional Self-Hosted Web Search ──────────────────
+  # Uncomment this entire block if you want a self-hosted search backend
+  # instead of DuckDuckGo. Update SEARXNG_URL in your .env accordingly.
+  #
+  # searxng:
+  #   image: searxng/searxng:latest
+  #   container_name: searxng
+  #   restart: unless-stopped
+  #   volumes:
+  #     - ./docker/searxng:/etc/searxng:rw
+  #   environment:
+  #     - SEARXNG_BASE_URL=http://searxng:8080/
+  #   networks:
+  #     - openclaw_net
+  #   healthcheck:
+  #     test: ["CMD", "curl", "-f", "http://localhost:8080/healthz"]
+  #     interval: 30s
+  #     timeout: 10s
+  #     retries: 3
+
+# ── Persistent Volumes ──────────────────────────────────────────
+volumes:
+  openclaw_memory:
+    driver: local
+  openclaw_logs:
+    driver: local
+  ollama_models:
+    driver: local
+
+# ── Internal Network ────────────────────────────────────────────
+networks:
+  openclaw_net:
+    driver: bridge
