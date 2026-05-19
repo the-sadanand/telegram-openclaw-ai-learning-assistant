@@ -47,102 +47,126 @@ console.log(`📚 Skills Path: ${OPENCLAW_SKILLS_PATH}`);
 // ─────────────────────────────────────────────────────────────────
 
 bot.start(async (ctx) => {
-  const userId = ctx.from.id;
-  const userProfile = await loadMemory(`user:${userId}`) || {};
+  try {
+    const userId = ctx.from.id;
+    const userProfile = await loadMemory(`user:${userId}`) || {};
 
-  if (!userProfile.onboarded) {
-    ctx.reply(
-      '👋 Welcome to OpenClaw Learning Assistant!\n\n' +
-      'I\'ll help you stay sharp with daily tech briefs and interview questions.\n\n' +
-      'Let\'s start with a quick onboarding...\n\n' +
-      'What\'s your name?'
-    );
-    userProfile.onboarding_step = 1;
-    await saveMemory(`user:${userId}`, userProfile);
-  } else {
-    // Existing user - show profile options
-    const briefTime = formatBriefTime();
-    const profileInfo = 
-      `📋 Your Profile:\n` +
-      `👤 Name: ${userProfile.name}\n` +
-      `🎯 Level: ${userProfile.level}\n` +
-      `📚 Interests: ${userProfile.interests?.join(', ') || 'None set'}\n` +
-      `🕐 Timezone: ${userProfile.timezone}\n` +
-      `⏰ Brief Time: ${briefTime}\n\n` +
-      `What would you like to do?`;
-    
-    await ctx.reply(profileInfo, {
-      reply_markup: {
-        inline_keyboard: [
-          [{ text: '✏️ Edit Profile', callback_data: 'edit_profile' }],
-          [{ text: '🔄 Start Fresh Onboarding', callback_data: 'restart_onboarding' }],
-          [{ text: '✅ Keep Current Settings', callback_data: 'keep_settings' }]
-        ]
-      }
+    if (!userProfile.onboarded) {
+      ctx.reply(
+        '👋 Welcome to OpenClaw Learning Assistant!\n\n' +
+        'I\'ll help you stay sharp with daily tech briefs and interview questions.\n\n' +
+        'Let\'s start with a quick onboarding...\n\n' +
+        'What\'s your name?'
+      );
+      userProfile.onboarding_step = 1;
+      await saveMemory(`user:${userId}`, userProfile);
+    } else {
+      // Existing user - show profile options
+      const briefTime = formatBriefTime();
+      const profileInfo = 
+        `📋 Your Profile:\n` +
+        `👤 Name: ${userProfile.name}\n` +
+        `🎯 Level: ${userProfile.level}\n` +
+        `📚 Interests: ${userProfile.interests?.join(', ') || 'None set'}\n` +
+        `🕐 Timezone: ${userProfile.timezone}\n` +
+        `⏰ Brief Time: ${briefTime}\n\n` +
+        `What would you like to do?`;
+      
+      await ctx.reply(profileInfo, {
+        reply_markup: {
+          inline_keyboard: [
+            [{ text: '✏️ Edit Profile', callback_data: 'edit_profile' }],
+            [{ text: '🔄 Start Fresh Onboarding', callback_data: 'restart_onboarding' }],
+            [{ text: '✅ Keep Current Settings', callback_data: 'keep_settings' }]
+          ]
+        }
+      });
+    }
+  } catch (error) {
+    console.error('Error in start command:', error);
+    ctx.reply('Sorry, an error occurred. Please try again later.').catch(e => {
+      console.error('Failed to send error message:', e);
     });
   }
 });
 
 bot.on('text', async (ctx) => {
-  const userId = ctx.from.id;
-  const text = ctx.message.text;
-  
-  // Skip if it's a command (starts with /)
-  if (text.startsWith('/')) {
-    return; // Let command handlers take over
-  }
-  
-  let userProfile = await loadMemory(`user:${userId}`) || {};
-
-  // Handle profile editing
-  if (userProfile.editing_field) {
-    return handleProfileEdit(ctx, userId, text, userProfile);
-  }
-
-  // Handle onboarding flow
-  if (!userProfile.onboarded) {
-    return handleOnboarding(ctx, userId, text, userProfile);
-  }
-
-  // Regular chat
-  ctx.reply('🤔 ...');
   try {
-    const response = await queryOllama(
-      `Keep your response short and direct. ${text}`
-    );
-    if (response && response.trim()) {
-      ctx.reply(response);
-    } else {
-      ctx.reply('Sorry, I got an empty response. Try again.');
+    const userId = ctx.from.id;
+    const text = ctx.message.text;
+    
+    // Skip if it's a command (starts with /)
+    if (text.startsWith('/')) {
+      return; // Let command handlers take over
+    }
+    
+    let userProfile = await loadMemory(`user:${userId}`) || {};
+    console.log(`Saved memory: user:${userId}`);
+
+    // Handle profile editing
+    if (userProfile.editing_field) {
+      return handleProfileEdit(ctx, userId, text, userProfile);
+    }
+
+    // Handle onboarding flow
+    if (!userProfile.onboarded) {
+      return handleOnboarding(ctx, userId, text, userProfile);
+    }
+
+    // Regular chat
+    ctx.reply('🤔 ...');
+    try {
+      const response = await queryOllama(
+        `Keep your response short and direct. ${text}`
+      );
+      if (response && response.trim()) {
+        ctx.reply(response);
+      } else {
+        ctx.reply('Sorry, I got an empty response. Try again.');
+      }
+    } catch (error) {
+      console.error('Error querying Ollama:', error.message);
+      
+      if (error.message.includes('not yet downloaded')) {
+        ctx.reply('⏳ Model still downloading. Check back in a few minutes.');
+      } else if (error.message.includes('Cannot reach')) {
+        ctx.reply('❌ AI engine not responding.');
+      } else {
+        ctx.reply('❌ Error: ' + error.message);
+      }
     }
   } catch (error) {
-    console.error('Error querying Ollama:', error.message);
-    
-    if (error.message.includes('not yet downloaded')) {
-      ctx.reply('⏳ Model still downloading. Check back in a few minutes.');
-    } else if (error.message.includes('Cannot reach')) {
-      ctx.reply('❌ AI engine not responding.');
-    } else {
-      ctx.reply('❌ Error: ' + error.message);
+    console.error('Error processing text message:', error);
+    try {
+      ctx.reply('❌ Sorry, an error occurred. Please try again.');
+    } catch (replyError) {
+      console.error('Failed to send error message:', replyError);
     }
   }
 });
 
 bot.command('brief', async (ctx) => {
-  ctx.reply('📚 Generating your tech brief...');
-  const userId = ctx.from.id;
-  const userProfile = await loadMemory(`user:${userId}`) || {};
-  
-  if (!userProfile.onboarded) {
-    return ctx.reply('Please complete onboarding first with /start');
-  }
-
   try {
-    await sendDailyBrief(userId, userProfile);
-    ctx.reply('✅ Brief sent!');
+    ctx.reply('📚 Generating your tech brief...');
+    const userId = ctx.from.id;
+    const userProfile = await loadMemory(`user:${userId}`) || {};
+    
+    if (!userProfile.onboarded) {
+      return ctx.reply('Please complete onboarding first with /start');
+    }
+
+    try {
+      await sendDailyBrief(userId, userProfile);
+      ctx.reply('✅ Brief sent!');
+    } catch (error) {
+      console.error('Error generating brief:', error.message);
+      ctx.reply('❌ Error generating brief: ' + error.message);
+    }
   } catch (error) {
-    console.error('Error generating brief:', error.message);
-    ctx.reply('❌ Error generating brief: ' + error.message);
+    console.error('Error in brief command:', error);
+    ctx.reply('❌ Sorry, an error occurred. Please try again.').catch(e => {
+      console.error('Failed to send error message:', e);
+    });
   }
 });
 
@@ -166,114 +190,154 @@ bot.command('status', async (ctx) => {
 // ─────────────────────────────────────────────────────────────────
 
 bot.action('edit_profile', async (ctx) => {
-  const userId = ctx.from.id;
-  const userProfile = await loadMemory(`user:${userId}`) || {};
-  
-  await ctx.reply(
-    '✏️ Edit Your Profile\n\n' +
-    'Which field would you like to update?',
-    {
-      reply_markup: {
-        inline_keyboard: [
-          [{ text: '👤 Name', callback_data: 'edit_name' }],
-          [{ text: '🎯 Experience Level', callback_data: 'edit_level' }],
-          [{ text: '📚 Interests', callback_data: 'edit_interests' }],
-          [{ text: '🕐 Timezone', callback_data: 'edit_timezone' }],
-          [{ text: '❌ Cancel', callback_data: 'cancel_edit' }]
-        ]
+  try {
+    const userId = ctx.from.id;
+    const userProfile = await loadMemory(`user:${userId}`) || {};
+    
+    await ctx.reply(
+      '✏️ Edit Your Profile\n\n' +
+      'Which field would you like to update?',
+      {
+        reply_markup: {
+          inline_keyboard: [
+            [{ text: '👤 Name', callback_data: 'edit_name' }],
+            [{ text: '🎯 Experience Level', callback_data: 'edit_level' }],
+            [{ text: '📚 Interests', callback_data: 'edit_interests' }],
+            [{ text: '🕐 Timezone', callback_data: 'edit_timezone' }],
+            [{ text: '❌ Cancel', callback_data: 'cancel_edit' }]
+          ]
+        }
       }
-    }
-  );
-  await ctx.answerCbQuery();
+    );
+    await ctx.answerCbQuery();
+  } catch (error) {
+    console.error('Error in edit_profile:', error);
+    ctx.answerCbQuery('An error occurred. Please try again.');
+  }
 });
 
 bot.action('edit_name', async (ctx) => {
-  const userId = ctx.from.id;
-  let userProfile = await loadMemory(`user:${userId}`) || {};
-  userProfile.editing_field = 'name';
-  await saveMemory(`user:${userId}`, userProfile);
-  
-  await ctx.reply('What\'s your new name?');
-  await ctx.answerCbQuery();
+  try {
+    const userId = ctx.from.id;
+    let userProfile = await loadMemory(`user:${userId}`) || {};
+    userProfile.editing_field = 'name';
+    await saveMemory(`user:${userId}`, userProfile);
+    
+    await ctx.reply('What\'s your new name?');
+    await ctx.answerCbQuery();
+  } catch (error) {
+    console.error('Error in edit_name:', error);
+    ctx.answerCbQuery('An error occurred. Please try again.');
+  }
 });
 
 bot.action('edit_level', async (ctx) => {
-  const userId = ctx.from.id;
-  let userProfile = await loadMemory(`user:${userId}`) || {};
-  userProfile.editing_field = 'level';
-  await saveMemory(`user:${userId}`, userProfile);
-  
-  await ctx.reply(
-    'What\'s your experience level?\n1. Beginner\n2. Intermediate\n3. Advanced'
-  );
-  await ctx.answerCbQuery();
+  try {
+    const userId = ctx.from.id;
+    let userProfile = await loadMemory(`user:${userId}`) || {};
+    userProfile.editing_field = 'level';
+    await saveMemory(`user:${userId}`, userProfile);
+    
+    await ctx.reply(
+      'What\'s your experience level?\n1. Beginner\n2. Intermediate\n3. Advanced'
+    );
+    await ctx.answerCbQuery();
+  } catch (error) {
+    console.error('Error in edit_level:', error);
+    ctx.answerCbQuery('An error occurred. Please try again.');
+  }
 });
 
 bot.action('edit_interests', async (ctx) => {
-  const userId = ctx.from.id;
-  let userProfile = await loadMemory(`user:${userId}`) || {};
-  userProfile.editing_field = 'interests';
-  await saveMemory(`user:${userId}`, userProfile);
-  
-  await ctx.reply(
-    'What are your main technical interests? (comma-separated)\nExample: JavaScript, React, AWS, Kubernetes'
-  );
-  await ctx.answerCbQuery();
+  try {
+    const userId = ctx.from.id;
+    let userProfile = await loadMemory(`user:${userId}`) || {};
+    userProfile.editing_field = 'interests';
+    await saveMemory(`user:${userId}`, userProfile);
+    
+    await ctx.reply(
+      'What are your main technical interests? (comma-separated)\nExample: JavaScript, React, AWS, Kubernetes'
+    );
+    await ctx.answerCbQuery();
+  } catch (error) {
+    console.error('Error in edit_interests:', error);
+    ctx.answerCbQuery('An error occurred. Please try again.');
+  }
 });
 
 bot.action('edit_timezone', async (ctx) => {
-  const userId = ctx.from.id;
-  let userProfile = await loadMemory(`user:${userId}`) || {};
-  userProfile.editing_field = 'timezone';
-  await saveMemory(`user:${userId}`, userProfile);
-  
-  await ctx.reply('What timezone are you in? (e.g., UTC, EST, PST, IST)');
-  await ctx.answerCbQuery();
+  try {
+    const userId = ctx.from.id;
+    let userProfile = await loadMemory(`user:${userId}`) || {};
+    userProfile.editing_field = 'timezone';
+    await saveMemory(`user:${userId}`, userProfile);
+    
+    await ctx.reply('What timezone are you in? (e.g., UTC, EST, PST, IST)');
+    await ctx.answerCbQuery();
+  } catch (error) {
+    console.error('Error in edit_timezone:', error);
+    ctx.answerCbQuery('An error occurred. Please try again.');
+  }
 });
 
 bot.action('restart_onboarding', async (ctx) => {
-  const userId = ctx.from.id;
-  let userProfile = await loadMemory(`user:${userId}`) || {};
-  
-  userProfile.onboarded = false;
-  userProfile.onboarding_step = 1;
-  await saveMemory(`user:${userId}`, userProfile);
-  
-  await ctx.reply(
-    '🔄 Starting fresh onboarding...\n\n' +
-    'What\'s your name?'
-  );
-  await ctx.answerCbQuery();
+  try {
+    const userId = ctx.from.id;
+    let userProfile = await loadMemory(`user:${userId}`) || {};
+    
+    userProfile.onboarded = false;
+    userProfile.onboarding_step = 1;
+    await saveMemory(`user:${userId}`, userProfile);
+    
+    await ctx.reply(
+      '🔄 Starting fresh onboarding...\n\n' +
+      'What\'s your name?'
+    );
+    await ctx.answerCbQuery();
+  } catch (error) {
+    console.error('Error in restart_onboarding:', error);
+    ctx.answerCbQuery('An error occurred. Please try again.');
+  }
 });
 
 bot.action('keep_settings', async (ctx) => {
-  const userId = ctx.from.id;
-  const userProfile = await loadMemory(`user:${userId}`) || {};
-  const briefTime = formatBriefTime();
-  
-  await ctx.reply(
-    `✅ All set!\n\n` +
-    `Your daily tech brief will arrive at ${briefTime} ${userProfile.timezone} time.\n\n` +
-    `Commands:\n` +
-    `/brief - Get your brief now\n` +
-    `/status - Check system status\n` +
-    `/start - Edit profile`
-  );
-  await ctx.answerCbQuery();
+  try {
+    const userId = ctx.from.id;
+    const userProfile = await loadMemory(`user:${userId}`) || {};
+    const briefTime = formatBriefTime();
+    
+    await ctx.reply(
+      `✅ All set!\n\n` +
+      `Your daily tech brief will arrive at ${briefTime} ${userProfile.timezone} time.\n\n` +
+      `Commands:\n` +
+      `/brief - Get your brief now\n` +
+      `/status - Check system status\n` +
+      `/start - Edit profile`
+    );
+    await ctx.answerCbQuery();
+  } catch (error) {
+    console.error('Error in keep_settings:', error);
+    ctx.answerCbQuery('An error occurred. Please try again.');
+  }
 });
 
 bot.action('cancel_edit', async (ctx) => {
-  const userId = ctx.from.id;
-  let userProfile = await loadMemory(`user:${userId}`) || {};
-  userProfile.editing_field = null;
-  await saveMemory(`user:${userId}`, userProfile);
-  
-  const briefTime = formatBriefTime();
-  await ctx.reply(
-    `✅ Profile edit cancelled.\n\n` +
-    `Your current settings remain unchanged. Your daily brief arrives at ${briefTime}.`
-  );
-  await ctx.answerCbQuery();
+  try {
+    const userId = ctx.from.id;
+    let userProfile = await loadMemory(`user:${userId}`) || {};
+    userProfile.editing_field = null;
+    await saveMemory(`user:${userId}`, userProfile);
+    
+    const briefTime = formatBriefTime();
+    await ctx.reply(
+      `✅ Profile edit cancelled.\n\n` +
+      `Your current settings remain unchanged. Your daily brief arrives at ${briefTime}.`
+    );
+    await ctx.answerCbQuery();
+  } catch (error) {
+    console.error('Error in cancel_edit:', error);
+    ctx.answerCbQuery('An error occurred. Please try again.');
+  }
 });
 
 // ─────────────────────────────────────────────────────────────────
@@ -545,6 +609,30 @@ bot.launch({
   }
 }).then(() => {
   console.log('✅ Telegram bot polling started');
+});
+
+// ─────────────────────────────────────────────────────────────────
+// Global Error Handlers
+// ─────────────────────────────────────────────────────────────────
+
+// Handle bot errors
+bot.catch((err, ctx) => {
+  console.error('❌ Bot Error:', err);
+  if (ctx && ctx.chat) {
+    ctx.reply('Sorry, something went wrong. Please try again later.').catch(e => {
+      console.error('Failed to send error message:', e);
+    });
+  }
+});
+
+// Handle uncaught exceptions
+process.on('uncaughtException', (error) => {
+  console.error('❌ Uncaught Exception:', error);
+});
+
+// Handle unhandled promise rejections
+process.on('unhandledRejection', (reason, promise) => {
+  console.error('❌ Unhandled Rejection at:', promise, 'reason:', reason);
 });
 
 // Graceful shutdown
