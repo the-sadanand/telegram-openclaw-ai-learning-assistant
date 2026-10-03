@@ -667,15 +667,17 @@ process.on('unhandledRejection', (reason, promise) => {
 });
 
 // Graceful shutdown
+const isWebhookMode = Boolean(process.env.RENDER_EXTERNAL_URL);
+
 process.once('SIGINT', () => {
   console.log('🛑 Shutting down...');
-  bot.stop('SIGINT');
+  if (!isWebhookMode) bot.stop('SIGINT');
   process.exit(0);
 });
 
 process.once('SIGTERM', () => {
   console.log('🛑 Shutting down...');
-  bot.stop('SIGTERM');
+  if (!isWebhookMode) bot.stop('SIGTERM');
   process.exit(0);
 });
 
