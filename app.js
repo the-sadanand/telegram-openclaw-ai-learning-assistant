@@ -94,14 +94,15 @@ bot.start(async (ctx) => {
   }
 });
 
-bot.on('text', async (ctx) => {
+bot.on('text', async (ctx, next) => {
   try {
     const userId = ctx.from.id;
     const text = ctx.message.text;
     
-    // Skip if it's a command (starts with /)
+    // Commands are handled by bot.command()/bot.start() below.
+    // Continue the Telegraf middleware chain instead of swallowing them.
     if (text.startsWith('/')) {
-      return; // Let command handlers take over
+      return next();
     }
     
     let userProfile = await loadMemory(`user:${userId}`) || {};
