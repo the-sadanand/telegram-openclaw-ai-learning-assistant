@@ -6,7 +6,7 @@ import cron from 'node-cron';
 import fs from 'fs';
 import { timingSafeEqual } from 'crypto';
 import { initMemory, saveMemory, loadMemory, listMemoryKeys } from './lib/memory.js';
-import { queryGemini, getGeminiStatus } from './lib/ollama.js';
+import { queryGemini, getGeminiStatus } from './lib/gemini.js';
 import { sendDailyBrief } from './lib/brief.js';
 
 const TELEGRAM_BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN;
