@@ -20,6 +20,7 @@ Set these in Render:
 - `UPSTASH_REDIS_REST_TOKEN` — Upstash Redis REST token
 - `TELEGRAM_WEBHOOK_SECRET` — random URL-safe secret
 - `CRON_SECRET` — random URL-safe secret
+- `GEMINI_TIMEOUT_MS` — Gemini request timeout in milliseconds (default `60000`)
 
 Do not set `OLLAMA_HOST`.
 
