@@ -11,7 +11,6 @@ import { loadSkill, runSkill } from './lib/skills.js';
 import { generateQuestions, generateTidbits } from './lib/generation.js';
 
 const TELEGRAM_BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN;
-const OLLAMA_HOST = process.env.OLLAMA_HOST || 'http://localhost:11434';
 const OPENCLAW_CONFIG_PATH = process.env.OPENCLAW_CONFIG_PATH || '/app/config/openclaw.json';
 const OPENCLAW_MEMORY_PATH = process.env.OPENCLAW_MEMORY_PATH || '/data/memory';
 const OPENCLAW_SKILLS_PATH = process.env.OPENCLAW_SKILLS_PATH || './skills';
@@ -38,7 +37,7 @@ app.use(express.json());
 
 console.log(`🚀 OpenClaw Learning Assistant v1.0.0`);
 console.log(`📱 Telegram Bot Token: ${TELEGRAM_BOT_TOKEN.slice(0, 10)}...`);
-console.log(`🤖 Ollama Host: ${OLLAMA_HOST}`);
+console.log(`🤖 Gemini Model: ${process.env.GEMINI_MODEL || 'gemini-3.8-flash'}`);
 console.log(`💾 Memory Path: ${OPENCLAW_MEMORY_PATH}`);
 console.log(`📚 Skills Path: ${OPENCLAW_SKILLS_PATH}`);
 
@@ -116,7 +115,7 @@ bot.on('text', async (ctx) => {
     // Regular chat
     ctx.reply('🤔 ...');
     try {
-      const response = await queryOllama(
+      const response = await queryGemini(
         `Keep your response short and direct. ${text}`
       );
       if (response && response.trim()) {
@@ -125,7 +124,7 @@ bot.on('text', async (ctx) => {
         ctx.reply('Sorry, I got an empty response. Try again.');
       }
     } catch (error) {
-      console.error('Error querying Ollama:', error.message);
+      console.error('Error querying Gemini:', error.message);
       
       if (error.message.includes('not yet downloaded')) {
         ctx.reply('⏳ Model still downloading. Check back in a few minutes.');
@@ -172,16 +171,16 @@ bot.command('brief', async (ctx) => {
 
 bot.command('status', async (ctx) => {
   try {
-    const status = await getOllamaStatus();
+    const status = await getGeminiStatus();
     ctx.reply(
       '📊 System Status:\n' +
       `✅ Bot: Online\n` +
-      `🤖 Ollama: ${status.models.length > 0 ? 'Ready' : 'No models'}\n` +
+      `🤖 Gemini: ${status.ready ? 'Ready' : 'Unavailable'}\n` +
       `💾 Memory: OK\n` +
-      `Models available: ${status.models.map(m => m.name).join(', ') || 'None'}`
+      `Model: ${status.model}`
     );
   } catch (error) {
-    ctx.reply('⚠️ Ollama connection error: ' + error.message);
+    ctx.reply('⚠️ Gemini connection error: ' + error.message);
   }
 });
 
@@ -582,8 +581,8 @@ app.get('/api/status', async (req, res) => {
     const status = await getOllamaStatus();
     res.json({
       bot: 'online',
-      ollama: status.models.length > 0 ? 'ready' : 'no-models',
-      models: status.models.map(m => m.name)
+      gemini: status.ready ? 'ready' : 'unavailable',
+      model: status.model
     });
   } catch (error) {
     res.status(500).json({ error: error.message });
