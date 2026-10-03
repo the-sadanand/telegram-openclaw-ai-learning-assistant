@@ -686,7 +686,7 @@ app.get('/api/status', async (req, res) => {
 // ─────────────────────────────────────────────────────────────────
 
 const PORT = Number(process.env.PORT) || 3000;
-app.listen(PORT, '0.0.0.0', async () => {
+const server = app.listen(PORT, '0.0.0.0', async () => {
   console.log('🌐 API server listening on port ' + PORT);
 
   if (IS_RENDER && process.env.RENDER_EXTERNAL_URL) {
