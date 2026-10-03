@@ -65,6 +65,24 @@ async function sendTelegramLongMessage(sendMessage, userId, message) {
 // Telegram Bot Handlers
 // ─────────────────────────────────────────────────────────────────
 
+// Serialize updates for the same user so onboarding/profile edits cannot
+// overwrite each other when Telegram delivers updates close together.
+const userLocks = new Map();
+
+async function withUserLock(userId, work) {
+  const previous = userLocks.get(userId) || Promise.resolve();
+  let release;
+  const current = new Promise(resolve => { release = resolve; });
+  userLocks.set(userId, current);
+  await previous;
+  try {
+    return await work();
+  } finally {
+    release();
+    if (userLocks.get(userId) === current) userLocks.delete(userId);
+  }
+}
+
 bot.start(async (ctx) => {
   try {
     const userId = ctx.from.id;
@@ -72,14 +90,31 @@ bot.start(async (ctx) => {
 
     if (!userProfile.onboarded) {
       userProfile.editing_field = null;
-      await ctx.reply(
-        '👋 Welcome to OpenClaw Learning Assistant!\n\n' +
-        'I\'ll help you stay sharp with daily tech briefs and interview questions.\n\n' +
-        'Let\'s start with a quick onboarding...\n\n' +
-        'What\'s your name?'
-      );
-      userProfile.onboarding_step = 1;
+      const step = Number(userProfile.onboarding_step) || 1;
+      userProfile.onboarding_step = step;
       await saveMemory(`user:${userId}`, userProfile);
+
+      if (step === 1) {
+        await ctx.reply(
+          '👋 Welcome to OpenClaw Learning Assistant!\n\n' +
+          'I\'ll help you stay sharp with daily tech briefs and interview questions.\n\n' +
+          'Let\'s start with a quick onboarding...\n\n' +
+          'What\'s your name?'
+        );
+      } else if (step === 2) {
+        await ctx.reply('What\'s your experience level?\n1. Beginner\n2. Intermediate\n3. Advanced');
+      } else if (step === 3) {
+        await ctx.reply(
+          'What are your main technical interests? (comma-separated)\n' +
+          'Example: JavaScript, React, AWS, Kubernetes'
+        );
+      } else {
+        const briefTime = formatBriefTime();
+        await ctx.reply(
+          'What timezone are you in? (e.g., UTC, EST, PST, IST)\n' +
+          `(I\'ll send your daily brief at ${briefTime} your time)`
+        );
+      }
     } else {
       // Existing user - show profile options
       const briefTime = formatBriefTime();
@@ -104,7 +139,7 @@ bot.start(async (ctx) => {
     }
   } catch (error) {
     console.error('Error in start command:', error);
-    ctx.reply('Sorry, an error occurred. Please try again later.').catch(e => {
+    await ctx.reply('Sorry, an error occurred. Please try again later.').catch(e => {
       console.error('Failed to send error message:', e);
     });
   }
@@ -113,6 +148,7 @@ bot.start(async (ctx) => {
 bot.on('text', async (ctx, next) => {
   try {
     const userId = ctx.from.id;
+    return await withUserLock(userId, async () => {
     const text = ctx.message.text;
     
     // Commands are handled by bot.command()/bot.start() below.
@@ -159,10 +195,11 @@ bot.on('text', async (ctx, next) => {
       console.error('Error querying Gemini:', error.message);
       await ctx.reply('❌ AI service error. Please try again.');
     }
+  });
   } catch (error) {
     console.error('Error processing text message:', error);
     try {
-      ctx.reply('❌ Sorry, an error occurred. Please try again.');
+      await ctx.reply('❌ Sorry, an error occurred. Please try again.');
     } catch (replyError) {
       console.error('Failed to send error message:', replyError);
     }
@@ -377,7 +414,7 @@ async function handleProfileEdit(ctx, userId, text, userProfile) {
       userProfile.editing_field = null;
       await saveMemory(`user:${userId}`, userProfile);
       await ctx.reply(`✅ Name updated to: ${text}`);
-      showEditMenu(ctx);
+      await showEditMenu(ctx);
       break;
 
     case 'level':
@@ -385,7 +422,7 @@ async function handleProfileEdit(ctx, userId, text, userProfile) {
       const trimmedLevel = text.trim().toLowerCase();
       
       if (!levels[trimmedLevel]) {
-        ctx.reply('❌ Please select 1 (Beginner), 2 (Intermediate), or 3 (Advanced)');
+        await ctx.reply('❌ Please select 1 (Beginner), 2 (Intermediate), or 3 (Advanced)');
         return;
       }
       
@@ -393,7 +430,7 @@ async function handleProfileEdit(ctx, userId, text, userProfile) {
       userProfile.editing_field = null;
       await saveMemory(`user:${userId}`, userProfile);
       await ctx.reply(`✅ Experience level updated to: ${userProfile.level}`);
-      showEditMenu(ctx);
+      await showEditMenu(ctx);
       break;
 
     case 'interests':
@@ -405,7 +442,7 @@ async function handleProfileEdit(ctx, userId, text, userProfile) {
       userProfile.editing_field = null;
       await saveMemory(`user:${userId}`, userProfile);
       await ctx.reply(`✅ Interests updated to: ${userProfile.interests.join(', ')}`);
-      showEditMenu(ctx);
+      await showEditMenu(ctx);
       break;
 
     case 'timezone':
@@ -418,7 +455,7 @@ async function handleProfileEdit(ctx, userId, text, userProfile) {
       userProfile.editing_field = null;
       await saveMemory(`user:${userId}`, userProfile);
       await ctx.reply(`✅ Timezone updated to: ${userProfile.timezone}`);
-      showEditMenu(ctx);
+      await showEditMenu(ctx);
       break;
 
     default:
@@ -462,7 +499,7 @@ async function handleOnboarding(ctx, userId, text, userProfile) {
       const trimmedLevel = text.trim().toLowerCase();
       
       if (!levels[trimmedLevel]) {
-        ctx.reply('❌ Please select 1 (Beginner), 2 (Intermediate), or 3 (Advanced)');
+        await ctx.reply('❌ Please select 1 (Beginner), 2 (Intermediate), or 3 (Advanced)');
         return;
       }
       
@@ -478,7 +515,11 @@ async function handleOnboarding(ctx, userId, text, userProfile) {
 
     case 3:
       // Get interests
-      userProfile.interests = text.split(',').map(i => i.trim());
+      userProfile.interests = text.split(',').map(i => i.trim()).filter(Boolean);
+      if (!userProfile.interests.length) {
+        await ctx.reply('Please enter at least one technical interest.');
+        return;
+      }
       userProfile.onboarding_step = 4;
       await saveMemory(`user:${userId}`, userProfile);
       const briefTime = formatBriefTime();
@@ -517,12 +558,18 @@ async function handleOnboarding(ctx, userId, text, userProfile) {
 // Daily Brief Generation
 // ─────────────────────────────────────────────────────────────────
 
-function formatBriefTime() {
+function getDailyBriefTime() {
   const timeStr = process.env.DAILY_BRIEF_TIME || config?.scheduling?.defaultDailyBriefTime || '21:00';
-  const [hours, minutes] = timeStr.split(':').map(Number);
+  const match = /^(?:([01]\\d|2[0-3]):([0-5]\\d))$/.exec(timeStr);
+  if (!match) {
+    console.warn('⚠️ Invalid DAILY_BRIEF_TIME "' + timeStr + '". Using 21:00.');
+    return [21, 0];
+  }
+  return [Number(match[1]), Number(match[2])];
+}
 
-  if (Number.isNaN(hours) || Number.isNaN(minutes)) return '9 PM';
-
+function formatBriefTime() {
+  const [hours, minutes] = getDailyBriefTime();
   const ampm = hours >= 12 ? 'PM' : 'AM';
   const displayHours = hours % 12 || 12;
   const displayMinutes = minutes > 0 ? ':' + minutes.toString().padStart(2, '0') : '';
@@ -554,7 +601,7 @@ function normalizeTimezone(value, fallback = 'UTC') {
 function getLocalTime(timezone) {
   const parts = new Intl.DateTimeFormat('en-CA', {
     timeZone: timezone, year: 'numeric', month: '2-digit', day: '2-digit',
-    hour: '2-digit', minute: '2-digit', hour12: false,
+    hour: '2-digit', minute: '2-digit', hour12: false, hourCycle: 'h23',
   }).formatToParts(new Date());
   const result = {};
   for (const part of parts) if (part.type !== 'literal') result[part.type] = part.value;
@@ -574,8 +621,7 @@ async function runDueBriefs() {
 
   briefRunInProgress = true;
   try {
-    const timeStr = process.env.DAILY_BRIEF_TIME || config?.scheduling?.defaultDailyBriefTime || '21:00';
-    const [targetHour, targetMinute] = timeStr.split(':').map(Number);
+    const [targetHour, targetMinute] = getDailyBriefTime();
     const targetMinutes = targetHour * 60 + targetMinute;
     const keys = await listMemoryKeys();
 
@@ -587,17 +633,11 @@ async function runDueBriefs() {
 
       const timezone = normalizeTimezone(userProfile.timezone || 'UTC');
       const local = getLocalTime(timezone);
-      let elapsed = local.minutes - targetMinutes;
-      let briefDate = local.date;
-
-      if (elapsed < 0) {
-        elapsed += 1440;
-        const previous = new Date(local.date + 'T00:00:00Z');
-        previous.setUTCDate(previous.getUTCDate() - 1);
-        briefDate = previous.toISOString().slice(0, 10);
-      }
-
-      if (elapsed > 15) continue;
+      // Once today's target time has passed, send today's brief.
+      // This gives QStash/node-cron a full catch-up window instead of
+      // dropping the brief after an arbitrary 15-minute cutoff.
+      if (local.minutes < targetMinutes) continue;
+      const briefDate = local.date;
 
       const freshProfile = await loadMemory(key);
       if (!freshProfile?.onboarded || freshProfile.last_brief_date === briefDate) continue;
