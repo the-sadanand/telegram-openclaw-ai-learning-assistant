@@ -8,15 +8,13 @@
     "start": "node app.js",
     "dev": "node --watch app.js",
     "gateway": "node app.js",
-    "cron": "node cli.js cron",
-    "memory": "node cli.js memory",
-    "version": "node -e \"console.log(require('./package.json').version)\""
+    "version": "node -e \"console.log(require('./package.json').version)\"",
+    "trigger-brief": "node cli.js trigger-brief"
   },
   "keywords": [
     "ai",
     "learning",
     "telegram",
-    "ollama",
     "agent"
   ],
   "author": "openclaw-learning-assistant",
@@ -26,7 +24,6 @@
     "axios": "^1.6.2",
     "express": "^4.18.2",
     "node-cron": "^3.0.2",
-    "sqlite3": "^5.1.6",
     "cheerio": "^1.0.0-rc.12",
     "dotenv": "^16.3.1",
     "@upstash/redis": "^1.38.0"
