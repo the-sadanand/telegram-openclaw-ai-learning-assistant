@@ -577,7 +577,9 @@ app.use(WEBHOOK_PATH, (req, res, next) => {
       return res.status(401).send('Unauthorized');
     }
   }
-  return bot.webhookCallback(WEBHOOK_PATH)(req, res, next);
+  // Express strips the mounted path before calling this middleware.
+  // Therefore Telegraf must handle the mounted request without a path check.
+  return bot.webhookCallback()(req, res, next);
 });
 // ─────────────────────────────────────────────────────────────────
 // Express API
