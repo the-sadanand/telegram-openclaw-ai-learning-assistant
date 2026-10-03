@@ -488,8 +488,15 @@ async function sendDailyBrief(userId, userProfile) {
   const allArticles = [];
   for (const interest of interests) {
     try {
-      const results = await webSearch(`${interest} latest news 2025`);
-      allArticles.push(...results);
+      const results = await webSearch(interest + ' latest news ' + new Date().getFullYear(), 5);
+      for (const article of results.slice(0, 3)) {
+        try {
+          article.content = await fetchContent(article.url);
+        } catch (error) {
+          article.content = article.snippet || '';
+        }
+        allArticles.push(article);
+      }
     } catch (err) {
       console.warn(`Search failed for ${interest}:`, err.message);
     }
