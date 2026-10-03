@@ -467,7 +467,12 @@ async function handleOnboarding(ctx, userId, text, userProfile) {
 
     case 4:
       // Get timezone
-      userProfile.timezone = text.toUpperCase();
+      const timezone = normalizeTimezone(text, null);
+      if (!timezone) {
+        await ctx.reply('Please enter a valid timezone, for example IST, Asia/Kolkata, UTC, or America/New_York.');
+        return;
+      }
+      userProfile.timezone = timezone;
       userProfile.onboarded = true;
       userProfile.created_at = new Date().toISOString();
       await saveMemory(`user:${userId}`, userProfile);
