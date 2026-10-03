@@ -47,6 +47,20 @@ console.log(`🤖 Gemini Model: ${process.env.GEMINI_MODEL || 'gemini-3.8-flash'
 console.log(`💾 Memory Path: ${OPENCLAW_MEMORY_PATH}`);
 console.log(`📚 Skills Path: ${OPENCLAW_SKILLS_PATH}`);
 
+async function sendTelegramLongMessage(sendMessage, userId, message) {
+  const maxLength = 4000;
+  let remaining = message;
+
+  while (remaining.length > maxLength) {
+    let cut = remaining.lastIndexOf('\n', maxLength);
+    if (cut < 1000) cut = maxLength;
+    await sendMessage(userId, remaining.slice(0, cut));
+    remaining = remaining.slice(cut).trimStart();
+  }
+
+  if (remaining) await sendMessage(userId, remaining);
+}
+
 // ─────────────────────────────────────────────────────────────────
 // Telegram Bot Handlers
 // ─────────────────────────────────────────────────────────────────
@@ -58,7 +72,7 @@ bot.start(async (ctx) => {
 
     if (!userProfile.onboarded) {
       userProfile.editing_field = null;
-      ctx.reply(
+      await ctx.reply(
         '👋 Welcome to OpenClaw Learning Assistant!\n\n' +
         'I\'ll help you stay sharp with daily tech briefs and interview questions.\n\n' +
         'Let\'s start with a quick onboarding...\n\n' +
@@ -616,7 +630,7 @@ if (!IS_RENDER) {
 }
 const WEBHOOK_PATH = '/telegram/webhook';
 
-app.use(WEBHOOK_PATH, (req, res, next) => {
+app.use(WEBHOOK_PATH, (req, res) => {
   console.log('📩 Telegram webhook request:', req.method, req.originalUrl);
   if (TELEGRAM_WEBHOOK_SECRET) {
     const received = req.get('X-Telegram-Bot-Api-Secret-Token') || '';
@@ -625,9 +639,12 @@ app.use(WEBHOOK_PATH, (req, res, next) => {
       return res.status(401).send('Unauthorized');
     }
   }
-  // Express strips the mounted path before calling this middleware.
-  // Therefore Telegraf must handle the mounted request without a path check.
-  return bot.webhookCallback()(req, res, next);
+
+  // Acknowledge Telegram immediately; slow Gemini/search work continues in the background.
+  void bot.handleUpdate(req.body).catch(error => {
+    console.error('❌ Background Telegram update failed:', error);
+  });
+  return res.sendStatus(200);
 });
 // ─────────────────────────────────────────────────────────────────
 // Express API
