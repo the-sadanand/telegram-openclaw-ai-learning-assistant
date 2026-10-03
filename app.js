@@ -86,6 +86,7 @@ async function withUserLock(userId, work) {
 bot.start(async (ctx) => {
   try {
     const userId = ctx.from.id;
+    return await withUserLock(userId, async () => {
     const userProfile = await loadMemory(`user:${userId}`) || {};
 
     if (!userProfile.onboarded) {
@@ -137,6 +138,7 @@ bot.start(async (ctx) => {
         }
       });
     }
+    });
   } catch (error) {
     console.error('Error in start command:', error);
     await ctx.reply('Sorry, an error occurred. Please try again later.').catch(e => {
@@ -170,8 +172,18 @@ bot.on('text', async (ctx, next) => {
       return;
     }
 
-    // Handle profile editing
+    // Editing sessions expire so an old edit request cannot consume
+    // an unrelated message much later.
     if (userProfile.editing_field) {
+      const startedAt = Number(userProfile.editing_started_at || 0);
+      const editAge = Date.now() - startedAt;
+      if (startedAt && editAge > 15 * 60 * 1000) {
+        userProfile.editing_field = null;
+        userProfile.editing_started_at = null;
+        await saveMemory(`user:${userId}`, userProfile);
+        await ctx.reply('⌛ Your profile edit session expired. Please use /start to edit your profile again.');
+        return;
+      }
       return handleProfileEdit(ctx, userId, text, userProfile);
     }
 
@@ -209,6 +221,7 @@ bot.on('text', async (ctx, next) => {
 bot.command('brief', async (ctx) => {
   try {
     const userId = ctx.from.id;
+    return await withUserLock(userId, async () => {
     const userProfile = await loadMemory(`user:${userId}`) || {};
 
     if (!userProfile.onboarded) {
@@ -224,6 +237,7 @@ bot.command('brief', async (ctx) => {
       console.error('Error generating brief:', error.message);
       await ctx.reply('❌ Error generating brief. Please try again.');
     }
+    });
   } catch (error) {
     console.error('Error in brief command:', error);
     await ctx.reply('❌ Sorry, an error occurred. Please try again.');
@@ -272,7 +286,7 @@ bot.action('edit_profile', async (ctx) => {
     await ctx.answerCbQuery();
   } catch (error) {
     console.error('Error in edit_profile:', error);
-    ctx.answerCbQuery('An error occurred. Please try again.');
+    await ctx.answerCbQuery('An error occurred. Please try again.');
   }
 });
 
@@ -281,13 +295,14 @@ bot.action('edit_name', async (ctx) => {
     const userId = ctx.from.id;
     let userProfile = await loadMemory(`user:${userId}`) || {};
     userProfile.editing_field = 'name';
+    userProfile.editing_started_at = Date.now();
     await saveMemory(`user:${userId}`, userProfile);
     
     await ctx.reply('What\'s your new name?');
     await ctx.answerCbQuery();
   } catch (error) {
     console.error('Error in edit_name:', error);
-    ctx.answerCbQuery('An error occurred. Please try again.');
+    await ctx.answerCbQuery('An error occurred. Please try again.');
   }
 });
 
@@ -296,6 +311,7 @@ bot.action('edit_level', async (ctx) => {
     const userId = ctx.from.id;
     let userProfile = await loadMemory(`user:${userId}`) || {};
     userProfile.editing_field = 'level';
+    userProfile.editing_started_at = Date.now();
     await saveMemory(`user:${userId}`, userProfile);
     
     await ctx.reply(
@@ -304,7 +320,7 @@ bot.action('edit_level', async (ctx) => {
     await ctx.answerCbQuery();
   } catch (error) {
     console.error('Error in edit_level:', error);
-    ctx.answerCbQuery('An error occurred. Please try again.');
+    await ctx.answerCbQuery('An error occurred. Please try again.');
   }
 });
 
@@ -313,6 +329,7 @@ bot.action('edit_interests', async (ctx) => {
     const userId = ctx.from.id;
     let userProfile = await loadMemory(`user:${userId}`) || {};
     userProfile.editing_field = 'interests';
+    userProfile.editing_started_at = Date.now();
     await saveMemory(`user:${userId}`, userProfile);
     
     await ctx.reply(
@@ -321,7 +338,7 @@ bot.action('edit_interests', async (ctx) => {
     await ctx.answerCbQuery();
   } catch (error) {
     console.error('Error in edit_interests:', error);
-    ctx.answerCbQuery('An error occurred. Please try again.');
+    await ctx.answerCbQuery('An error occurred. Please try again.');
   }
 });
 
@@ -330,13 +347,14 @@ bot.action('edit_timezone', async (ctx) => {
     const userId = ctx.from.id;
     let userProfile = await loadMemory(`user:${userId}`) || {};
     userProfile.editing_field = 'timezone';
+    userProfile.editing_started_at = Date.now();
     await saveMemory(`user:${userId}`, userProfile);
     
     await ctx.reply('What timezone are you in? (e.g., UTC, EST, PST, IST)');
     await ctx.answerCbQuery();
   } catch (error) {
     console.error('Error in edit_timezone:', error);
-    ctx.answerCbQuery('An error occurred. Please try again.');
+    await ctx.answerCbQuery('An error occurred. Please try again.');
   }
 });
 
@@ -357,7 +375,7 @@ bot.action('restart_onboarding', async (ctx) => {
     await ctx.answerCbQuery();
   } catch (error) {
     console.error('Error in restart_onboarding:', error);
-    ctx.answerCbQuery('An error occurred. Please try again.');
+    await ctx.answerCbQuery('An error occurred. Please try again.');
   }
 });
 
@@ -378,7 +396,7 @@ bot.action('keep_settings', async (ctx) => {
     await ctx.answerCbQuery();
   } catch (error) {
     console.error('Error in keep_settings:', error);
-    ctx.answerCbQuery('An error occurred. Please try again.');
+    await ctx.answerCbQuery('An error occurred. Please try again.');
   }
 });
 
@@ -387,6 +405,7 @@ bot.action('cancel_edit', async (ctx) => {
     const userId = ctx.from.id;
     let userProfile = await loadMemory(`user:${userId}`) || {};
     userProfile.editing_field = null;
+    userProfile.editing_started_at = null;
     await saveMemory(`user:${userId}`, userProfile);
     
     const briefTime = formatBriefTime();
@@ -397,7 +416,7 @@ bot.action('cancel_edit', async (ctx) => {
     await ctx.answerCbQuery();
   } catch (error) {
     console.error('Error in cancel_edit:', error);
-    ctx.answerCbQuery('An error occurred. Please try again.');
+    await ctx.answerCbQuery('An error occurred. Please try again.');
   }
 });
 
@@ -412,6 +431,7 @@ async function handleProfileEdit(ctx, userId, text, userProfile) {
     case 'name':
       userProfile.name = text;
       userProfile.editing_field = null;
+      userProfile.editing_started_at = null;
       await saveMemory(`user:${userId}`, userProfile);
       await ctx.reply(`✅ Name updated to: ${text}`);
       await showEditMenu(ctx);
@@ -428,6 +448,7 @@ async function handleProfileEdit(ctx, userId, text, userProfile) {
       
       userProfile.level = levels[trimmedLevel];
       userProfile.editing_field = null;
+      userProfile.editing_started_at = null;
       await saveMemory(`user:${userId}`, userProfile);
       await ctx.reply(`✅ Experience level updated to: ${userProfile.level}`);
       await showEditMenu(ctx);
@@ -440,6 +461,7 @@ async function handleProfileEdit(ctx, userId, text, userProfile) {
         return;
       }
       userProfile.editing_field = null;
+      userProfile.editing_started_at = null;
       await saveMemory(`user:${userId}`, userProfile);
       await ctx.reply(`✅ Interests updated to: ${userProfile.interests.join(', ')}`);
       await showEditMenu(ctx);
@@ -453,6 +475,7 @@ async function handleProfileEdit(ctx, userId, text, userProfile) {
       }
       userProfile.timezone = timezone;
       userProfile.editing_field = null;
+      userProfile.editing_started_at = null;
       await saveMemory(`user:${userId}`, userProfile);
       await ctx.reply(`✅ Timezone updated to: ${userProfile.timezone}`);
       await showEditMenu(ctx);
@@ -639,25 +662,27 @@ async function runDueBriefs() {
       if (local.minutes < targetMinutes) continue;
       const briefDate = local.date;
 
-      const freshProfile = await loadMemory(key);
-      if (!freshProfile?.onboarded || freshProfile.last_brief_date === briefDate) continue;
+      await withUserLock(userId, async () => {
+        const freshProfile = await loadMemory(key);
+        if (!freshProfile?.onboarded || freshProfile.last_brief_date === briefDate) return;
 
-      try {
-        await sendDailyBrief({
-          sendMessage: bot.telegram.sendMessage.bind(bot.telegram),
-          userId,
-          userProfile: freshProfile
-        });
+        try {
+          await sendDailyBrief({
+            sendMessage: bot.telegram.sendMessage.bind(bot.telegram),
+            userId,
+            userProfile: freshProfile
+          });
 
-        const latestProfile = await loadMemory(key);
-        if (latestProfile?.onboarded && latestProfile.last_brief_date !== briefDate) {
-          latestProfile.last_brief_date = briefDate;
-          await saveMemory(key, latestProfile);
+          const latestProfile = await loadMemory(key);
+          if (latestProfile?.onboarded && latestProfile.last_brief_date !== briefDate) {
+            latestProfile.last_brief_date = briefDate;
+            await saveMemory(key, latestProfile);
+          }
+          console.log('✅ Scheduled brief sent to ' + userId + ' (' + timezone + ')');
+        } catch (error) {
+          console.error('❌ Failed scheduled brief for ' + userId + ':', error.message);
         }
-        console.log('✅ Scheduled brief sent to ' + userId + ' (' + timezone + ')');
-      } catch (error) {
-        console.error('❌ Failed scheduled brief for ' + userId + ':', error.message);
-      }
+      });
     }
   } finally {
     briefRunInProgress = false;
@@ -700,7 +725,7 @@ app.post('/api/cron/daily/:secret', async (req, res) => {
     res.json({ ok: true });
   } catch (error) {
     console.error('Scheduled job failed:', error);
-    res.status(500).json({ error: error.message });
+    res.status(500).json({ error: 'Internal server error' });
   }
 });
 
