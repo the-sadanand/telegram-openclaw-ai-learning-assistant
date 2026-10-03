@@ -528,12 +528,21 @@ async function runDueBriefs() {
 
     const timezone = normalizeTimezone(userProfile.timezone || 'UTC');
     const local = getLocalTime(timezone);
-    const elapsed = local.minutes - targetMinutes;
-    if (elapsed < 0 || elapsed > 5 || userProfile.last_brief_date === local.date) continue;
+    let elapsed = local.minutes - targetMinutes;
+    let briefDate = local.date;
+
+    if (elapsed < 0) {
+      elapsed += 1440;
+      const previous = new Date(local.date + 'T00:00:00Z');
+      previous.setUTCDate(previous.getUTCDate() - 1);
+      briefDate = previous.toISOString().slice(0, 10);
+    }
+
+    if (elapsed > 5 || userProfile.last_brief_date === briefDate) continue;
 
     try {
       await sendDailyBrief({ sendMessage: bot.telegram.sendMessage.bind(bot.telegram), userId, userProfile });
-      userProfile.last_brief_date = local.date;
+      userProfile.last_brief_date = briefDate;
       await saveMemory(key, userProfile);
       console.log('✅ Scheduled brief sent to ' + userId + ' (' + timezone + ')');
     } catch (error) {
