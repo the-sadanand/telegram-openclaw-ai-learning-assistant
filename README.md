@@ -42,6 +42,7 @@ UPSTASH_REDIS_REST_URL=your_upstash_redis_rest_url
 UPSTASH_REDIS_REST_TOKEN=your_upstash_redis_rest_token
 TELEGRAM_WEBHOOK_SECRET=your_webhook_secret
 CRON_SECRET=your_cron_secret
+GEMINI_TIMEOUT_MS=60000
 ```
 
 Never commit real tokens or API keys.
@@ -152,3 +153,6 @@ RENDER_SETUP.md         Render deployment guide
 - Telegram uses polling locally and webhooks on Render.
 - On Render, QStash is the scheduler; the in-process node-cron scheduler is disabled. Locally, node-cron runs every five minutes.
 - The application no longer depends on a local Ollama server.
+- `DAILY_BRIEF_TIME` is validated as `HH:MM`; invalid values fall back to `21:00`.
+- Scheduled delivery is catch-up based: once the daily target time has passed, the current day's brief is sent once and recorded in memory.
+- `/brief` and `npm run trigger-brief` are on-demand/manual sends and do not mark the scheduled daily brief as delivered.
