@@ -582,6 +582,20 @@ app.use(WEBHOOK_PATH, (req, res, next) => {
 // Express API
 // ─────────────────────────────────────────────────────────────────
 
+app.post('/api/cron/daily/:secret', async (req, res) => {
+  if (!CRON_SECRET || req.params.secret !== CRON_SECRET) {
+    return res.status(401).json({ error: 'Unauthorized' });
+  }
+
+  try {
+    await runDueBriefs();
+    res.json({ ok: true });
+  } catch (error) {
+    console.error('Scheduled job failed:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
 app.get('/health', (req, res) => {
   res.json({ status: 'ok', version: '1.0.0' });
 });
