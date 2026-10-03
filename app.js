@@ -5,7 +5,7 @@ import express from 'express';
 import cron from 'node-cron';
 import fs from 'fs';
 import { initMemory, saveMemory, loadMemory, listMemoryKeys } from './lib/memory.js';
-import { queryOllama, getOllamaStatus } from './lib/ollama.js';
+import { queryGemini, getGeminiStatus } from './lib/ollama.js';
 import { webSearch, fetchContent } from './lib/search.js';
 import { loadSkill, runSkill } from './lib/skills.js';
 import { generateQuestions, generateTidbits } from './lib/generation.js';
@@ -461,7 +461,7 @@ async function handleOnboarding(ctx, userId, text, userProfile) {
       userProfile.onboarded = true;
       userProfile.created_at = new Date().toISOString();
       await saveMemory(`user:${userId}`, userProfile);
-      // const briefTime = formatBriefTime();
+      const briefTime = formatBriefTime();
       ctx.reply(
         `🎉 Onboarding complete, ${userProfile.name}!\n\n` +
         `You're all set! Your daily tech brief will arrive at ${briefTime} ${userProfile.timezone} time.\n\n` +
@@ -578,7 +578,7 @@ app.get('/health', (req, res) => {
 
 app.get('/api/status', async (req, res) => {
   try {
-    const status = await getOllamaStatus();
+    const status = await getGeminiStatus();
     res.json({
       bot: 'online',
       gemini: status.ready ? 'ready' : 'unavailable',
