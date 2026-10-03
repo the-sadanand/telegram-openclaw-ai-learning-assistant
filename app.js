@@ -560,7 +560,7 @@ async function handleOnboarding(ctx, userId, text, userProfile) {
 
 function getDailyBriefTime() {
   const timeStr = process.env.DAILY_BRIEF_TIME || config?.scheduling?.defaultDailyBriefTime || '21:00';
-  const match = /^(?:([01]\\d|2[0-3]):([0-5]\\d))$/.exec(timeStr);
+  const match = /^([01]\d|2[0-3]):([0-5]\d)$/.exec(timeStr);
   if (!match) {
     console.warn('⚠️ Invalid DAILY_BRIEF_TIME "' + timeStr + '". Using 21:00.');
     return [21, 0];
