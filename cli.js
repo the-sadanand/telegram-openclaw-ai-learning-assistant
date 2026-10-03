@@ -2,7 +2,7 @@
 
 import 'dotenv/config';
 import { Telegraf } from 'telegraf';
-import { listMemoryKeys, loadMemory } from './lib/memory.js';
+import { initMemory, listMemoryKeys, loadMemory } from './lib/memory.js';
 import { sendDailyBrief } from './lib/brief.js';
 
 async function triggerBrief() {
@@ -10,9 +10,7 @@ async function triggerBrief() {
     throw new Error('TELEGRAM_BOT_TOKEN is required');
   }
 
-  await import('./lib/memory.js').then(({ initMemory }) =>
-    initMemory(process.env.OPENCLAW_MEMORY_PATH || '/data/memory')
-  );
+  await initMemory(process.env.OPENCLAW_MEMORY_PATH || '/data/memory');
 
   const bot = new Telegraf(process.env.TELEGRAM_BOT_TOKEN);
   const sendMessage = bot.telegram.sendMessage.bind(bot.telegram);
