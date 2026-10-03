@@ -7,9 +7,7 @@ import fs from 'fs';
 import { timingSafeEqual } from 'crypto';
 import { initMemory, saveMemory, loadMemory, listMemoryKeys } from './lib/memory.js';
 import { queryGemini, getGeminiStatus } from './lib/ollama.js';
-import { webSearch, fetchContent } from './lib/search.js';
-import { loadSkill, runSkill } from './lib/skills.js';
-import { generateQuestions, generateTidbits } from './lib/generation.js';
+import { sendDailyBrief } from './lib/brief.js';
 
 const TELEGRAM_BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN;
 const OPENCLAW_CONFIG_PATH = process.env.OPENCLAW_CONFIG_PATH || '/app/config/openclaw.json';
@@ -158,7 +156,7 @@ bot.command('brief', async (ctx) => {
     }
 
     try {
-      await sendDailyBrief(userId, userProfile);
+      await sendDailyBrief({ sendMessage: bot.telegram.sendMessage.bind(bot.telegram), userId, userProfile });
       ctx.reply('✅ Brief sent!');
     } catch (error) {
       console.error('Error generating brief:', error.message);
@@ -480,58 +478,6 @@ async function handleOnboarding(ctx, userId, text, userProfile) {
 // ─────────────────────────────────────────────────────────────────
 // Daily Brief Generation
 // ─────────────────────────────────────────────────────────────────
-
-async function sendTelegramLongMessage(userId, message) {
-  const maxLength = 4000;
-  let remaining = message;
-
-  while (remaining.length > maxLength) {
-    let cut = remaining.lastIndexOf('\n', maxLength);
-    if (cut < 1000) cut = maxLength;
-    await bot.telegram.sendMessage(userId, remaining.slice(0, cut));
-    remaining = remaining.slice(cut).trimStart();
-  }
-
-  if (remaining) {
-    await bot.telegram.sendMessage(userId, remaining);
-  }
-}
-
-async function sendDailyBrief(userId, userProfile) {
-  const interests = userProfile.interests || ['JavaScript', 'Node.js'];
-  
-  // Search for recent content on each interest
-  const allArticles = [];
-  for (const interest of interests) {
-    try {
-      const results = await webSearch(interest + ' latest news ' + new Date().getFullYear(), 5);
-      for (const article of results.slice(0, 3)) {
-        try {
-          article.content = await fetchContent(article.url);
-        } catch (error) {
-          article.content = article.snippet || '';
-        }
-        allArticles.push(article);
-      }
-    } catch (err) {
-      console.warn(`Search failed for ${interest}:`, err.message);
-    }
-  }
-
-  // Generate tidbits
-  const tidbits = await generateTidbits(allArticles, userProfile);
-  
-  // Generate questions
-  const questions = await generateQuestions(userProfile, tidbits);
-
-  // Format message
-  const message =
-    `📚 Daily Tech Brief — ${new Date().toLocaleDateString()}\n\n` +
-    `🔥 Today's Tidbits:\n${tidbits.map((t, i) => `${i + 1}. ${t}`).join('\n\n')}\n\n` +
-    `❓ Interview Questions:\n${questions.map((q, i) => `${i + 1}. ${q}`).join('\n\n')}`;
-
-  await sendTelegramLongMessage(userId, message);
-}
 
 // ─────────────────────────────────────────────────────────────────
 // Cron Scheduling
