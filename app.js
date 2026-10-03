@@ -619,9 +619,13 @@ app.listen(PORT, '0.0.0.0', async () => {
       console.error('❌ Failed to configure Telegram webhook:', error.message);
     }
   } else {
-    bot.launch({ polling: { interval: 300, timeout: 30 } }).then(() => {
+    try {
+      await bot.telegram.deleteWebhook({ drop_pending_updates: false });
+      await bot.launch({ polling: { interval: 300, timeout: 30 } });
       console.log('✅ Telegram bot polling started');
-    });
+    } catch (error) {
+      console.error('❌ Failed to start Telegram polling:', error.message);
+    }
   }
 });
 // ─────────────────────────────────────────────────────────────────
