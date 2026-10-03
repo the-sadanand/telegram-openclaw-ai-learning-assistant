@@ -532,7 +532,7 @@ async function runDueBriefs() {
     if (elapsed < 0 || elapsed > 5 || userProfile.last_brief_date === local.date) continue;
 
     try {
-      await sendDailyBrief(userId, userProfile);
+      await sendDailyBrief({ sendMessage: bot.telegram.sendMessage.bind(bot.telegram), userId, userProfile });
       userProfile.last_brief_date = local.date;
       await saveMemory(key, userProfile);
       console.log('✅ Scheduled brief sent to ' + userId + ' (' + timezone + ')');
