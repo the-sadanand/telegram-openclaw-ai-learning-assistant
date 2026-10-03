@@ -476,10 +476,10 @@ async function handleOnboarding(ctx, userId, text, userProfile) {
       userProfile.onboarded = true;
       userProfile.created_at = new Date().toISOString();
       await saveMemory(`user:${userId}`, userProfile);
-      const briefTime = formatBriefTime();
+      const completedBriefTime = formatBriefTime();
       ctx.reply(
         `🎉 Onboarding complete, ${userProfile.name}!\n\n` +
-        `You're all set! Your daily tech brief will arrive at ${briefTime} ${userProfile.timezone} time.\n\n` +
+        `You're all set! Your daily tech brief will arrive at ${completedBriefTime} ${userProfile.timezone} time.\n\n` +
         `Commands:\n` +
         `/brief - Get your brief now\n` +
         `/status - Check system status\n` +
