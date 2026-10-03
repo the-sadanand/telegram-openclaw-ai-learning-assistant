@@ -385,7 +385,12 @@ async function handleProfileEdit(ctx, userId, text, userProfile) {
       break;
 
     case 'timezone':
-      userProfile.timezone = normalizeTimezone(text);
+      const timezone = normalizeTimezone(text, null);
+      if (!timezone) {
+        await ctx.reply('Please enter a valid timezone, for example IST, Asia/Kolkata, UTC, or America/New_York.');
+        return;
+      }
+      userProfile.timezone = timezone;
       userProfile.editing_field = null;
       await saveMemory(`user:${userId}`, userProfile);
       ctx.reply(`✅ Timezone updated to: ${userProfile.timezone}`);
@@ -487,7 +492,7 @@ async function handleOnboarding(ctx, userId, text, userProfile) {
 // Cron Scheduling
 // ─────────────────────────────────────────────────────────────────
 
-function normalizeTimezone(value) {
+function normalizeTimezone(value, fallback = 'UTC') {
   const input = value.trim();
   const aliases = {
     IST: 'Asia/Kolkata', UTC: 'UTC', GMT: 'UTC',
@@ -501,7 +506,7 @@ function normalizeTimezone(value) {
     new Intl.DateTimeFormat('en-US', { timeZone: timezone }).format();
     return timezone;
   } catch {
-    return 'UTC';
+    return fallback;
   }
 }
 
