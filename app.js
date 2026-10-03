@@ -4,6 +4,7 @@ import { Telegraf } from 'telegraf';
 import express from 'express';
 import cron from 'node-cron';
 import fs from 'fs';
+import { timingSafeEqual } from 'crypto';
 import { initMemory, saveMemory, loadMemory, listMemoryKeys } from './lib/memory.js';
 import { queryGemini, getGeminiStatus } from './lib/ollama.js';
 import { webSearch, fetchContent } from './lib/search.js';
@@ -14,6 +15,8 @@ const TELEGRAM_BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN;
 const OPENCLAW_CONFIG_PATH = process.env.OPENCLAW_CONFIG_PATH || '/app/config/openclaw.json';
 const OPENCLAW_MEMORY_PATH = process.env.OPENCLAW_MEMORY_PATH || '/data/memory';
 const OPENCLAW_SKILLS_PATH = process.env.OPENCLAW_SKILLS_PATH || './skills';
+const TELEGRAM_WEBHOOK_SECRET = process.env.TELEGRAM_WEBHOOK_SECRET || '';
+const CRON_SECRET = process.env.CRON_SECRET || '';
 
 // Load configuration
 let config = {};
@@ -380,7 +383,7 @@ async function handleProfileEdit(ctx, userId, text, userProfile) {
       break;
 
     case 'timezone':
-      userProfile.timezone = text.toUpperCase();
+      userProfile.timezone = normalizeTimezone(text);
       userProfile.editing_field = null;
       await saveMemory(`user:${userId}`, userProfile);
       ctx.reply(`✅ Timezone updated to: ${userProfile.timezone}`);
@@ -511,63 +514,78 @@ async function sendDailyBrief(userId, userProfile) {
 // Cron Scheduling
 // ─────────────────────────────────────────────────────────────────
 
-// Format brief time for display
-function formatBriefTime() {
-  const defaultTime = config?.scheduling?.defaultDailyBriefTime || '21:00';
-  const timeStr = process.env.DAILY_BRIEF_TIME || defaultTime;
-  const [hours, minutes] = timeStr.split(':').map(Number);
-  
-  if (isNaN(hours) || isNaN(minutes)) {
-    return '9 PM'; // Fallback
+function normalizeTimezone(value) {
+  const input = value.trim();
+  const aliases = {
+    IST: 'Asia/Kolkata', UTC: 'UTC', GMT: 'UTC',
+    EST: 'America/New_York', EDT: 'America/New_York',
+    CST: 'America/Chicago', CDT: 'America/Chicago',
+    MST: 'America/Denver', MDT: 'America/Denver',
+    PST: 'America/Los_Angeles', PDT: 'America/Los_Angeles',
+  };
+  const timezone = aliases[input.toUpperCase()] || input;
+  try {
+    new Intl.DateTimeFormat('en-US', { timeZone: timezone }).format();
+    return timezone;
+  } catch {
+    return 'UTC';
   }
-  
-  const ampm = hours >= 12 ? 'PM' : 'AM';
-  const displayHours = hours % 12 || 12;
-  const displayMinutes = minutes > 0 ? `:${minutes.toString().padStart(2, '0')}` : '';
-  return `${displayHours}${displayMinutes} ${ampm}`;
 }
 
-// Parse the daily brief time
-function getCronSchedule() {
-  const defaultTime = config?.scheduling?.defaultDailyBriefTime || '21:00';
-  const timeStr = process.env.DAILY_BRIEF_TIME || defaultTime;
-  const [hours, minutes] = timeStr.split(':').map(Number);
-  
-  if (isNaN(hours) || isNaN(minutes) || hours < 0 || hours > 23 || minutes < 0 || minutes > 59) {
-    console.warn(`⚠️  Invalid DAILY_BRIEF_TIME: ${timeStr}. Using configured default (${defaultTime})`);
-    const [defHours, defMinutes] = defaultTime.split(':').map(Number);
-    return `${defMinutes} ${defHours} * * *`;
-  }
-  
-  const cronTime = `${minutes} ${hours} * * *`;
-  console.log(`📅 Daily brief scheduled for: ${hours.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')} (${cronTime})`);
-  return cronTime;
+function getLocalTime(timezone) {
+  const parts = new Intl.DateTimeFormat('en-CA', {
+    timeZone: timezone, year: 'numeric', month: '2-digit', day: '2-digit',
+    hour: '2-digit', minute: '2-digit', hour12: false,
+  }).formatToParts(new Date());
+  const result = {};
+  for (const part of parts) if (part.type !== 'literal') result[part.type] = part.value;
+  return {
+    date: result.year + '-' + result.month + '-' + result.day,
+    minutes: Number(result.hour) * 60 + Number(result.minute),
+  };
 }
 
-const cronSchedule = getCronSchedule();
+async function runDueBriefs() {
+  const timeStr = process.env.DAILY_BRIEF_TIME || config?.scheduling?.defaultDailyBriefTime || '21:00';
+  const [targetHour, targetMinute] = timeStr.split(':').map(Number);
+  const targetMinutes = targetHour * 60 + targetMinute;
+  const keys = await listMemoryKeys();
 
-// Every day at the scheduled time
-cron.schedule(cronSchedule, async () => {
-  console.log('⏰ Running scheduled ...');
-  
-  const userKeys = await listMemoryKeys();
-  for (const key of userKeys) {
-    if (key.startsWith('user:')) {
-      const userId = parseInt(key.replace('user:', ''));
-      const userProfile = await loadMemory(key);
-      
-      if (userProfile.onboarded) {
-        try {
-          await sendDailyBrief(userId, userProfile);
-          console.log(`✅ Brief sent to ${userId}`);
-        } catch (error) {
-          console.error(`❌ Failed to send brief to ${userId}:`, error.message);
-        }
-      }
+  for (const key of keys) {
+    if (!key.startsWith('user:')) continue;
+    const userId = Number(key.slice(5));
+    const userProfile = await loadMemory(key);
+    if (!userProfile?.onboarded) continue;
+
+    const timezone = normalizeTimezone(userProfile.timezone || 'UTC');
+    const local = getLocalTime(timezone);
+    const elapsed = local.minutes - targetMinutes;
+    if (elapsed < 0 || elapsed > 5 || userProfile.last_brief_date === local.date) continue;
+
+    try {
+      await sendDailyBrief(userId, userProfile);
+      userProfile.last_brief_date = local.date;
+      await saveMemory(key, userProfile);
+      console.log('✅ Scheduled brief sent to ' + userId + ' (' + timezone + ')');
+    } catch (error) {
+      console.error('❌ Failed scheduled brief for ' + userId + ':', error.message);
     }
   }
-});
+}
 
+cron.schedule('*/5 * * * *', runDueBriefs);
+const WEBHOOK_PATH = '/telegram/webhook';
+
+app.use(WEBHOOK_PATH, (req, res, next) => {
+  if (TELEGRAM_WEBHOOK_SECRET) {
+    const received = req.get('X-Telegram-Bot-Api-Secret-Token') || '';
+    if (received.length !== TELEGRAM_WEBHOOK_SECRET.length ||
+        !timingSafeEqual(Buffer.from(received), Buffer.from(TELEGRAM_WEBHOOK_SECRET))) {
+      return res.status(401).send('Unauthorized');
+    }
+  }
+  return bot.webhookCallback(WEBHOOK_PATH)(req, res, next);
+});
 // ─────────────────────────────────────────────────────────────────
 // Express API
 // ─────────────────────────────────────────────────────────────────
@@ -593,23 +611,27 @@ app.get('/api/status', async (req, res) => {
 // Startup
 // ─────────────────────────────────────────────────────────────────
 
-const PORT = process.env.PORT || 3000;
+const PORT = Number(process.env.PORT) || 3000;
+const IS_RENDER = process.env.RENDER === 'true' || Boolean(process.env.RENDER_EXTERNAL_URL);
 
-// Start Express server
-app.listen(PORT, () => {
-  console.log(`🌐 API server listening on port ${PORT}`);
-});
+app.listen(PORT, '0.0.0.0', async () => {
+  console.log('🌐 API server listening on port ' + PORT);
 
-// Start Telegram bot
-bot.launch({
-  polling: {
-    interval: 300,
-    timeout: 30,
+  if (IS_RENDER && process.env.RENDER_EXTERNAL_URL) {
+    const webhookUrl = process.env.RENDER_EXTERNAL_URL + WEBHOOK_PATH;
+    const webhookOptions = TELEGRAM_WEBHOOK_SECRET ? { secret_token: TELEGRAM_WEBHOOK_SECRET } : {};
+    try {
+      await bot.telegram.setWebhook(webhookUrl, webhookOptions);
+      console.log('✅ Telegram webhook configured');
+    } catch (error) {
+      console.error('❌ Failed to configure Telegram webhook:', error.message);
+    }
+  } else {
+    bot.launch({ polling: { interval: 300, timeout: 30 } }).then(() => {
+      console.log('✅ Telegram bot polling started');
+    });
   }
-}).then(() => {
-  console.log('✅ Telegram bot polling started');
 });
-
 // ─────────────────────────────────────────────────────────────────
 // Global Error Handlers
 // ─────────────────────────────────────────────────────────────────
