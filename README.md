@@ -13,7 +13,7 @@ Node.js + Telegraf
    ├── Gemini API
    ├── DuckDuckGo web search
    ├── Upstash Redis memory (production)
-   └── five-minute scheduler check
+   └── QStash five-minute scheduler (Render) / node-cron (local)
 ```
 
 ## Features
@@ -150,5 +150,5 @@ RENDER_SETUP.md         Render deployment guide
 - Gemini API keys and Telegram tokens belong in environment variables only.
 - Render Free web services have ephemeral local files, so production memory should use Upstash Redis.
 - Telegram uses polling locally and webhooks on Render.
-- The five-minute external scheduler is required for reliable daily briefs on a sleeping Render Free service.
+- On Render, QStash is the scheduler; the in-process node-cron scheduler is disabled. Locally, node-cron runs every five minutes.
 - The application no longer depends on a local Ollama server.
