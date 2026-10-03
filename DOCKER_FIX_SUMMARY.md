@@ -16,7 +16,7 @@ The runtime has been updated for the current Gemini + Render architecture.
 - Improved DuckDuckGo search with HTML and API fallback.
 - Added article-content fetching before daily brief generation.
 - Added robust Gemini retry/error handling.
-- Fixed onboarding timezone validation and the previous briefTime error.
+- Restored the missing brief-time formatter and hardened onboarding.
 - Added Telegram message splitting for messages near the API size limit.
 - Updated the CLI and Makefile to match the current runtime.
 - Added render.yaml and RENDER_SETUP.md.
