@@ -22,3 +22,5 @@ services:
         sync: false
       - key: CRON_SECRET
         sync: false
+      - key: GEMINI_TIMEOUT_MS
+        value: "60000"
