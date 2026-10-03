@@ -1,63 +1,53 @@
+#!/usr/bin/env node
 
 import 'dotenv/config';
+import { Telegraf } from 'telegraf';
 import { listMemoryKeys, loadMemory } from './lib/memory.js';
-import { sendDailyBrief } from './app.js';
-
-const command = process.argv[2];
-const subcommand = process.argv[3];
-
-async function main() {
-  try {
-    if (command === 'cron' && subcommand === 'trigger') {
-      await triggerBrief();
-    } else if (command === 'memory' && subcommand === 'list') {
-      await listMemory();
-    } else {
-      console.log('OpenClaw CLI');
-      console.log('Usage: node cli.js <command> <subcommand>');
-      console.log('Commands:');
-      console.log('  cron trigger     - Trigger nightly-tech-brief');
-      console.log('  memory list      - List all memory keys');
-    }
-  } catch (error) {
-    console.error('Error:', error.message);
-    process.exit(1);
-  }
-}
+import { sendDailyBrief } from './lib/brief.js';
 
 async function triggerBrief() {
-  console.log('Triggering nightly-tech-brief for all users...');
-  const keys = await listMemoryKeys();
-  let count = 0;
-
-  for (const key of keys) {
-    if (key.startsWith('user:')) {
-      const userId = parseInt(key.replace('user:', ''));
-      const userProfile = await loadMemory(key);
-
-      if (userProfile && userProfile.onboarded) {
-        console.log(`Sending brief to ${userId}...`);
-        count++;
-      }
-    }
+  if (!process.env.TELEGRAM_BOT_TOKEN) {
+    throw new Error('TELEGRAM_BOT_TOKEN is required');
   }
 
-  console.log(`✅ Triggered ${count} brief(s)`);
+  await import('./lib/memory.js').then(({ initMemory }) =>
+    initMemory(process.env.OPENCLAW_MEMORY_PATH || '/data/memory')
+  );
+
+  const bot = new Telegraf(process.env.TELEGRAM_BOT_TOKEN);
+  const sendMessage = bot.telegram.sendMessage.bind(bot.telegram);
+  const keys = await listMemoryKeys();
+  let sent = 0;
+
+  for (const key of keys) {
+    if (!key.startsWith('user:')) continue;
+
+    const userId = Number(key.slice(5));
+    const profile = await loadMemory(key);
+    if (!profile?.onboarded) continue;
+
+    await sendDailyBrief({ sendMessage, userId, userProfile: profile });
+    sent++;
+  }
+
+  console.log('Sent ' + sent + ' daily brief(s).');
 }
 
-async function listMemory() {
-  console.log('Memory keys:');
-  const keys = await listMemoryKeys();
-  
-  if (keys.length === 0) {
-    console.log('  (empty)');
+async function main() {
+  const command = process.argv[2];
+
+  if (command === 'trigger-brief') {
+    await triggerBrief();
     return;
   }
 
-  for (const key of keys) {
-    const value = await loadMemory(key);
-    console.log(`  ${key}: ${JSON.stringify(value).substring(0, 60)}...`);
-  }
+  console.log('OpenClaw Learning Assistant CLI');
+  console.log('');
+  console.log('Commands:');
+  console.log('  trigger-brief   Send a daily brief to all onboarded users');
 }
 
-main();
+main().catch(error => {
+  console.error('❌', error.message);
+  process.exit(1);
+});
