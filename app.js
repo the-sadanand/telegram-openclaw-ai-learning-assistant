@@ -481,6 +481,22 @@ async function handleOnboarding(ctx, userId, text, userProfile) {
 // Daily Brief Generation
 // ─────────────────────────────────────────────────────────────────
 
+async function sendTelegramLongMessage(userId, message) {
+  const maxLength = 4000;
+  let remaining = message;
+
+  while (remaining.length > maxLength) {
+    let cut = remaining.lastIndexOf('\n', maxLength);
+    if (cut < 1000) cut = maxLength;
+    await bot.telegram.sendMessage(userId, remaining.slice(0, cut));
+    remaining = remaining.slice(cut).trimStart();
+  }
+
+  if (remaining) {
+    await bot.telegram.sendMessage(userId, remaining);
+  }
+}
+
 async function sendDailyBrief(userId, userProfile) {
   const interests = userProfile.interests || ['JavaScript', 'Node.js'];
   
@@ -514,7 +530,7 @@ async function sendDailyBrief(userId, userProfile) {
     `🔥 Today's Tidbits:\n${tidbits.map((t, i) => `${i + 1}. ${t}`).join('\n\n')}\n\n` +
     `❓ Interview Questions:\n${questions.map((q, i) => `${i + 1}. ${q}`).join('\n\n')}`;
 
-  await bot.telegram.sendMessage(userId, message);
+  await sendTelegramLongMessage(userId, message);
 }
 
 // ─────────────────────────────────────────────────────────────────
