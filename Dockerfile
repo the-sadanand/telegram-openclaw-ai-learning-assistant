@@ -19,7 +19,7 @@ RUN npm install --omit=dev || npm ci --omit=dev
 FROM node:20-alpine
 
 LABEL maintainer="openclaw-learning-assistant"
-LABEL description="Personalized AI Learning Assistant — Node.js + Telegram + Ollama"
+LABEL description="Personalized AI Learning Assistant — Node.js + Telegram + Gemini"
 
 # tini = proper PID 1 / signal forwarding inside Docker
 # curl = used by the HEALTHCHECK below
@@ -41,7 +41,7 @@ RUN mkdir -p /data/memory /data/logs
 
 # Health check: query the health endpoint
 HEALTHCHECK --interval=30s --timeout=10s --start-period=20s --retries=3 \
-  CMD curl -f http://localhost:3000/health || exit 1
+  CMD sh -c "curl -f http://localhost:${PORT:-3000}/health || exit 1"
 
 # tini as PID 1 so SIGTERM from `docker compose stop` propagates correctly
 ENTRYPOINT ["/sbin/tini", "--"]
