@@ -30,6 +30,10 @@ if (!TELEGRAM_BOT_TOKEN) {
   console.error('ERROR: TELEGRAM_BOT_TOKEN is not set in .env');
   process.exit(1);
 }
+if (!process.env.GEMINI_API_KEY) {
+  console.error('ERROR: GEMINI_API_KEY is not set');
+  process.exit(1);
+}
 
 await initMemory(OPENCLAW_MEMORY_PATH);
 const bot = new Telegraf(TELEGRAM_BOT_TOKEN);
