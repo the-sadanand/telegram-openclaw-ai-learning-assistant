@@ -71,7 +71,7 @@
     "jobs": [
       {
         "name": "nightly-tech-brief",
-        "schedule": "0 21 * * *",
+        "schedule": "*/5 * * * *",
         "timezone": "{{user.timezone}}",
         "session": "isolated",
         "channel": "telegram",
