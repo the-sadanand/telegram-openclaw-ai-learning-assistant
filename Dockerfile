@@ -11,9 +11,9 @@ WORKDIR /build
 # Copy package files
 COPY package.json package-lock.json* ./
 
-# Install dependencies (production only)
-# Use npm install if no lock file, npm ci if lock file exists
-RUN npm install --omit=dev || npm ci --omit=dev
+# Install dependencies (production only).
+# The repository currently does not include a lockfile, so npm install is intentional here.
+RUN npm install --omit=dev
 
 # Runtime stage
 FROM node:20-alpine
