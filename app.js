@@ -569,6 +569,7 @@ cron.schedule('*/5 * * * *', runDueBriefs);
 const WEBHOOK_PATH = '/telegram/webhook';
 
 app.use(WEBHOOK_PATH, (req, res, next) => {
+  console.log('📩 Telegram webhook request:', req.method, req.originalUrl);
   if (TELEGRAM_WEBHOOK_SECRET) {
     const received = req.get('X-Telegram-Bot-Api-Secret-Token') || '';
     if (received.length !== TELEGRAM_WEBHOOK_SECRET.length ||
@@ -629,6 +630,13 @@ app.listen(PORT, '0.0.0.0', async () => {
     try {
       await bot.telegram.setWebhook(webhookUrl, webhookOptions);
       console.log('✅ Telegram webhook configured');
+      const webhookInfo = await bot.telegram.getWebhookInfo();
+      console.log('🔎 Telegram webhook info:', JSON.stringify({
+        url: webhookInfo.url,
+        pending_update_count: webhookInfo.pending_update_count,
+        last_error_date: webhookInfo.last_error_date,
+        last_error_message: webhookInfo.last_error_message
+      }));
     } catch (error) {
       console.error('❌ Failed to configure Telegram webhook:', error.message);
     }
@@ -649,6 +657,7 @@ app.listen(PORT, '0.0.0.0', async () => {
 // Handle bot errors
 bot.catch((err, ctx) => {
   console.error('❌ Bot Error:', err);
+  console.error('❌ Bot update:', ctx?.update ? JSON.stringify(ctx.update) : 'none');
   if (ctx && ctx.chat) {
     ctx.reply('Sorry, something went wrong. Please try again later.').catch(e => {
       console.error('Failed to send error message:', e);
