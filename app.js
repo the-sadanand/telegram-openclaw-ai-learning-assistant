@@ -15,6 +15,7 @@ const OPENCLAW_MEMORY_PATH = process.env.OPENCLAW_MEMORY_PATH || '/data/memory';
 const OPENCLAW_SKILLS_PATH = process.env.OPENCLAW_SKILLS_PATH || './skills';
 const TELEGRAM_WEBHOOK_SECRET = process.env.TELEGRAM_WEBHOOK_SECRET || '';
 const CRON_SECRET = process.env.CRON_SECRET || '';
+const IS_RENDER = process.env.RENDER === 'true' || Boolean(process.env.RENDER_EXTERNAL_URL);
 
 // Load configuration
 let config = {};
@@ -56,6 +57,7 @@ bot.start(async (ctx) => {
     const userProfile = await loadMemory(`user:${userId}`) || {};
 
     if (!userProfile.onboarded) {
+      userProfile.editing_field = null;
       ctx.reply(
         '👋 Welcome to OpenClaw Learning Assistant!\n\n' +
         'I\'ll help you stay sharp with daily tech briefs and interview questions.\n\n' +
@@ -106,7 +108,17 @@ bot.on('text', async (ctx, next) => {
     }
     
     let userProfile = await loadMemory(`user:${userId}`) || {};
-    console.log(`Saved memory: user:${userId}`);
+
+    if (!userProfile.onboarded && !userProfile.onboarding_step) {
+      userProfile.onboarding_step = 1;
+      await saveMemory(`user:${userId}`, userProfile);
+      await ctx.reply(
+        '👋 Welcome to OpenClaw Learning Assistant!\n\n' +
+        'I\'ll help you stay sharp with daily tech briefs and interview questions.\n\n' +
+        'What\'s your name?'
+      );
+      return;
+    }
 
     // Handle profile editing
     if (userProfile.editing_field) {
@@ -119,26 +131,19 @@ bot.on('text', async (ctx, next) => {
     }
 
     // Regular chat
-    ctx.reply('🤔 ...');
+    await ctx.reply('🤔 ...');
     try {
       const response = await queryGemini(
         `Keep your response short and direct. ${text}`
       );
       if (response && response.trim()) {
-        ctx.reply(response);
+        await sendTelegramLongMessage(ctx.reply.bind(ctx), response);
       } else {
-        ctx.reply('Sorry, I got an empty response. Try again.');
+        await ctx.reply('Sorry, I got an empty response. Try again.');
       }
     } catch (error) {
       console.error('Error querying Gemini:', error.message);
-      
-      if (error.message.includes('not yet downloaded')) {
-        ctx.reply('⏳ Model still downloading. Check back in a few minutes.');
-      } else if (error.message.includes('Cannot reach')) {
-        ctx.reply('❌ AI engine not responding.');
-      } else {
-        ctx.reply('❌ Error: ' + error.message);
-      }
+      await ctx.reply('❌ AI service error. Please try again.');
     }
   } catch (error) {
     console.error('Error processing text message:', error);
@@ -152,33 +157,32 @@ bot.on('text', async (ctx, next) => {
 
 bot.command('brief', async (ctx) => {
   try {
-    ctx.reply('📚 Generating your tech brief...');
     const userId = ctx.from.id;
     const userProfile = await loadMemory(`user:${userId}`) || {};
-    
+
     if (!userProfile.onboarded) {
-      return ctx.reply('Please complete onboarding first with /start');
+      await ctx.reply('Please complete onboarding first with /start');
+      return;
     }
 
+    await ctx.reply('📚 Generating your tech brief...');
     try {
       await sendDailyBrief({ sendMessage: bot.telegram.sendMessage.bind(bot.telegram), userId, userProfile });
-      ctx.reply('✅ Brief sent!');
+      await ctx.reply('✅ Brief sent!');
     } catch (error) {
       console.error('Error generating brief:', error.message);
-      ctx.reply('❌ Error generating brief: ' + error.message);
+      await ctx.reply('❌ Error generating brief. Please try again.');
     }
   } catch (error) {
     console.error('Error in brief command:', error);
-    ctx.reply('❌ Sorry, an error occurred. Please try again.').catch(e => {
-      console.error('Failed to send error message:', e);
-    });
+    await ctx.reply('❌ Sorry, an error occurred. Please try again.');
   }
 });
 
 bot.command('status', async (ctx) => {
   try {
     const status = await getGeminiStatus();
-    ctx.reply(
+    await ctx.reply(
       '📊 System Status:\n' +
       `✅ Bot: Online\n` +
       `🤖 Gemini: ${status.ready ? 'Ready' : 'Unavailable'}\n` +
@@ -186,7 +190,7 @@ bot.command('status', async (ctx) => {
       `Model: ${status.model}`
     );
   } catch (error) {
-    ctx.reply('⚠️ Gemini connection error: ' + error.message);
+    await ctx.reply('⚠️ Gemini connection error. Please try again.');
   }
 });
 
@@ -292,6 +296,7 @@ bot.action('restart_onboarding', async (ctx) => {
     
     userProfile.onboarded = false;
     userProfile.onboarding_step = 1;
+    userProfile.editing_field = null;
     await saveMemory(`user:${userId}`, userProfile);
     
     await ctx.reply(
@@ -357,7 +362,7 @@ async function handleProfileEdit(ctx, userId, text, userProfile) {
       userProfile.name = text;
       userProfile.editing_field = null;
       await saveMemory(`user:${userId}`, userProfile);
-      ctx.reply(`✅ Name updated to: ${text}`);
+      await ctx.reply(`✅ Name updated to: ${text}`);
       showEditMenu(ctx);
       break;
 
@@ -373,15 +378,19 @@ async function handleProfileEdit(ctx, userId, text, userProfile) {
       userProfile.level = levels[trimmedLevel];
       userProfile.editing_field = null;
       await saveMemory(`user:${userId}`, userProfile);
-      ctx.reply(`✅ Experience level updated to: ${userProfile.level}`);
+      await ctx.reply(`✅ Experience level updated to: ${userProfile.level}`);
       showEditMenu(ctx);
       break;
 
     case 'interests':
-      userProfile.interests = text.split(',').map(i => i.trim());
+      userProfile.interests = text.split(',').map(i => i.trim()).filter(Boolean);
+      if (!userProfile.interests.length) {
+        await ctx.reply('Please enter at least one technical interest.');
+        return;
+      }
       userProfile.editing_field = null;
       await saveMemory(`user:${userId}`, userProfile);
-      ctx.reply(`✅ Interests updated to: ${userProfile.interests.join(', ')}`);
+      await ctx.reply(`✅ Interests updated to: ${userProfile.interests.join(', ')}`);
       showEditMenu(ctx);
       break;
 
@@ -394,12 +403,12 @@ async function handleProfileEdit(ctx, userId, text, userProfile) {
       userProfile.timezone = timezone;
       userProfile.editing_field = null;
       await saveMemory(`user:${userId}`, userProfile);
-      ctx.reply(`✅ Timezone updated to: ${userProfile.timezone}`);
+      await ctx.reply(`✅ Timezone updated to: ${userProfile.timezone}`);
       showEditMenu(ctx);
       break;
 
     default:
-      ctx.reply('❌ Unknown edit field');
+      await ctx.reply('❌ Unknown edit field');
   }
 }
 
@@ -430,7 +439,7 @@ async function handleOnboarding(ctx, userId, text, userProfile) {
       userProfile.name = text;
       userProfile.onboarding_step = 2;
       await saveMemory(`user:${userId}`, userProfile);
-      ctx.reply(`Nice to meet you, ${text}! 😊\n\nWhat's your experience level?\n1. Beginner\n2. Intermediate\n3. Advanced`);
+      await ctx.reply(`Nice to meet you, ${text}! 😊\n\nWhat's your experience level?\n1. Beginner\n2. Intermediate\n3. Advanced`);
       break;
 
     case 2:
@@ -446,7 +455,7 @@ async function handleOnboarding(ctx, userId, text, userProfile) {
       userProfile.level = levels[trimmedLevel];
       userProfile.onboarding_step = 3;
       await saveMemory(`user:${userId}`, userProfile);
-      ctx.reply(
+      await ctx.reply(
         `${userProfile.level.toUpperCase()} level, got it! 🎯\n\n` +
         `What are your main technical interests? (comma-separated)\n` +
         `Example: JavaScript, React, AWS, Kubernetes`
@@ -459,8 +468,8 @@ async function handleOnboarding(ctx, userId, text, userProfile) {
       userProfile.onboarding_step = 4;
       await saveMemory(`user:${userId}`, userProfile);
       const briefTime = formatBriefTime();
-      ctx.reply(
-        `Great! Your interests: ${userProfile.interests.join(', ')} 🚀\n\n` +
+      await ctx.reply(
+        `Great! Your interests: ${userProfile.interests.join(', ')} 🚀\n\n`
         `What timezone are you in? (e.g., UTC, EST, PST, IST)\n` +
         `(I'll send your daily brief at ${briefTime} your time)`
       );
@@ -478,8 +487,8 @@ async function handleOnboarding(ctx, userId, text, userProfile) {
       userProfile.created_at = new Date().toISOString();
       await saveMemory(`user:${userId}`, userProfile);
       const completedBriefTime = formatBriefTime();
-      ctx.reply(
-        `🎉 Onboarding complete, ${userProfile.name}!\n\n` +
+      await ctx.reply(
+        `🎉 Onboarding complete, ${userProfile.name}!\n\n`
         `You're all set! Your daily tech brief will arrive at ${completedBriefTime} ${userProfile.timezone} time.\n\n` +
         `Commands:\n` +
         `/brief - Get your brief now\n` +
@@ -493,6 +502,18 @@ async function handleOnboarding(ctx, userId, text, userProfile) {
 // ─────────────────────────────────────────────────────────────────
 // Daily Brief Generation
 // ─────────────────────────────────────────────────────────────────
+
+function formatBriefTime() {
+  const timeStr = process.env.DAILY_BRIEF_TIME || config?.scheduling?.defaultDailyBriefTime || '21:00';
+  const [hours, minutes] = timeStr.split(':').map(Number);
+
+  if (Number.isNaN(hours) || Number.isNaN(minutes)) return '9 PM';
+
+  const ampm = hours >= 12 ? 'PM' : 'AM';
+  const displayHours = hours % 12 || 12;
+  const displayMinutes = minutes > 0 ? ':' + minutes.toString().padStart(2, '0') : '';
+  return displayHours + displayMinutes + ' ' + ampm;
+}
 
 // ─────────────────────────────────────────────────────────────────
 // Cron Scheduling
@@ -529,44 +550,70 @@ function getLocalTime(timezone) {
   };
 }
 
+let briefRunInProgress = false;
+
 async function runDueBriefs() {
-  const timeStr = process.env.DAILY_BRIEF_TIME || config?.scheduling?.defaultDailyBriefTime || '21:00';
-  const [targetHour, targetMinute] = timeStr.split(':').map(Number);
-  const targetMinutes = targetHour * 60 + targetMinute;
-  const keys = await listMemoryKeys();
+  if (briefRunInProgress) {
+    console.log('⏭️ Brief run already in progress; skipping overlapping trigger.');
+    return;
+  }
 
-  for (const key of keys) {
-    if (!key.startsWith('user:')) continue;
-    const userId = Number(key.slice(5));
-    const userProfile = await loadMemory(key);
-    if (!userProfile?.onboarded) continue;
+  briefRunInProgress = true;
+  try {
+    const timeStr = process.env.DAILY_BRIEF_TIME || config?.scheduling?.defaultDailyBriefTime || '21:00';
+    const [targetHour, targetMinute] = timeStr.split(':').map(Number);
+    const targetMinutes = targetHour * 60 + targetMinute;
+    const keys = await listMemoryKeys();
 
-    const timezone = normalizeTimezone(userProfile.timezone || 'UTC');
-    const local = getLocalTime(timezone);
-    let elapsed = local.minutes - targetMinutes;
-    let briefDate = local.date;
+    for (const key of keys) {
+      if (!key.startsWith('user:')) continue;
+      const userId = Number(key.slice(5));
+      const userProfile = await loadMemory(key);
+      if (!userProfile?.onboarded) continue;
 
-    if (elapsed < 0) {
-      elapsed += 1440;
-      const previous = new Date(local.date + 'T00:00:00Z');
-      previous.setUTCDate(previous.getUTCDate() - 1);
-      briefDate = previous.toISOString().slice(0, 10);
+      const timezone = normalizeTimezone(userProfile.timezone || 'UTC');
+      const local = getLocalTime(timezone);
+      let elapsed = local.minutes - targetMinutes;
+      let briefDate = local.date;
+
+      if (elapsed < 0) {
+        elapsed += 1440;
+        const previous = new Date(local.date + 'T00:00:00Z');
+        previous.setUTCDate(previous.getUTCDate() - 1);
+        briefDate = previous.toISOString().slice(0, 10);
+      }
+
+      if (elapsed > 15) continue;
+
+      const freshProfile = await loadMemory(key);
+      if (!freshProfile?.onboarded || freshProfile.last_brief_date === briefDate) continue;
+
+      try {
+        await sendDailyBrief({
+          sendMessage: bot.telegram.sendMessage.bind(bot.telegram),
+          userId,
+          userProfile: freshProfile
+        });
+
+        const latestProfile = await loadMemory(key);
+        if (latestProfile?.onboarded && latestProfile.last_brief_date !== briefDate) {
+          latestProfile.last_brief_date = briefDate;
+          await saveMemory(key, latestProfile);
+        }
+        console.log('✅ Scheduled brief sent to ' + userId + ' (' + timezone + ')');
+      } catch (error) {
+        console.error('❌ Failed scheduled brief for ' + userId + ':', error.message);
+      }
     }
-
-    if (elapsed > 5 || userProfile.last_brief_date === briefDate) continue;
-
-    try {
-      await sendDailyBrief({ sendMessage: bot.telegram.sendMessage.bind(bot.telegram), userId, userProfile });
-      userProfile.last_brief_date = briefDate;
-      await saveMemory(key, userProfile);
-      console.log('✅ Scheduled brief sent to ' + userId + ' (' + timezone + ')');
-    } catch (error) {
-      console.error('❌ Failed scheduled brief for ' + userId + ':', error.message);
-    }
+  } finally {
+    briefRunInProgress = false;
   }
 }
 
-cron.schedule('*/5 * * * *', runDueBriefs);
+// QStash is the production scheduler on Render. Keep node-cron for local development only.
+if (!IS_RENDER) {
+  cron.schedule('*/5 * * * *', runDueBriefs);
+}
 const WEBHOOK_PATH = '/telegram/webhook';
 
 app.use(WEBHOOK_PATH, (req, res, next) => {
@@ -622,12 +669,14 @@ app.get('/api/status', async (req, res) => {
 // ─────────────────────────────────────────────────────────────────
 
 const PORT = Number(process.env.PORT) || 3000;
-const IS_RENDER = process.env.RENDER === 'true' || Boolean(process.env.RENDER_EXTERNAL_URL);
-
 app.listen(PORT, '0.0.0.0', async () => {
   console.log('🌐 API server listening on port ' + PORT);
 
   if (IS_RENDER && process.env.RENDER_EXTERNAL_URL) {
+    if (TELEGRAM_WEBHOOK_SECRET && !/^[A-Za-z0-9_-]+$/.test(TELEGRAM_WEBHOOK_SECRET)) {
+      console.error('❌ TELEGRAM_WEBHOOK_SECRET must contain only A-Z, a-z, 0-9, _ or -');
+      process.exit(1);
+    }
     const webhookUrl = process.env.RENDER_EXTERNAL_URL + WEBHOOK_PATH;
     const webhookOptions = TELEGRAM_WEBHOOK_SECRET ? { secret_token: TELEGRAM_WEBHOOK_SECRET } : {};
     try {
@@ -642,6 +691,7 @@ app.listen(PORT, '0.0.0.0', async () => {
       }));
     } catch (error) {
       console.error('❌ Failed to configure Telegram webhook:', error.message);
+      process.exit(1);
     }
   } else {
     try {
@@ -680,17 +730,17 @@ process.on('unhandledRejection', (reason, promise) => {
 
 // Graceful shutdown
 const isWebhookMode = Boolean(process.env.RENDER_EXTERNAL_URL);
+let shuttingDown = false;
 
-process.once('SIGINT', () => {
+async function shutdown(signal) {
+  if (shuttingDown) return;
+  shuttingDown = true;
   console.log('🛑 Shutting down...');
-  if (!isWebhookMode) bot.stop('SIGINT');
-  process.exit(0);
-});
+  if (!isWebhookMode) bot.stop(signal);
+  await new Promise(resolve => server.close(() => resolve()));
+}
 
-process.once('SIGTERM', () => {
-  console.log('🛑 Shutting down...');
-  if (!isWebhookMode) bot.stop('SIGTERM');
-  process.exit(0);
-});
+process.once('SIGINT', () => shutdown('SIGINT'));
+process.once('SIGTERM', () => shutdown('SIGTERM'));
 
 export { bot, app };
