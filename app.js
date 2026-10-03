@@ -35,6 +35,10 @@ if (!process.env.GEMINI_API_KEY) {
   console.error('ERROR: GEMINI_API_KEY is not set');
   process.exit(1);
 }
+if (CRON_SECRET && !/^[A-Za-z0-9_-]+$/.test(CRON_SECRET)) {
+  console.error('ERROR: CRON_SECRET must contain only A-Z, a-z, 0-9, _ or - because it is used in the QStash URL path');
+  process.exit(1);
+}
 
 await initMemory(OPENCLAW_MEMORY_PATH);
 const bot = new Telegraf(TELEGRAM_BOT_TOKEN);
